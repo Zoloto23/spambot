@@ -28,18 +28,109 @@ if not GROUP_ID:
 API_VERSION = "5.131"
 PREFIX = "!"
 
-INSULTS = [
-    "сука", "блядь", "хуй", "пизда", "мудила", "гандон",
-    "пидор", "лох", "дебил", "идиот", "кретин", "олень",
-    "баран", "козел", "свинья", "петух", "шлюха", "блядина",
-    "тварь", "урод", "выродок", "мразь", "гад", "крыса",
-    "ебать", "ебаный", "ебанутый", "еблан", "заебать",
-    "нахуй", "похуй", "дохуя", "охуеть", "пиздец",
-    "я твою мать вертел", "иди нахуй", "в пизду",
-    "ебанный в рот", "бля буду", "твою мать",
-    "заткнись еблан", "ты тупой", "ты чё дурак"
+# --- ЖЕСТОКИЕ ОСКОРБЛЕНИЯ ---
+CRUEL_INSULTS = [
+    "ты даже не человек, ты ошибка природы",
+    "твои родители тебя не любили, и я понимаю почему",
+    "ты настолько тупой, что даже бот это видит",
+    "ты позор для своей семьи",
+    "твой мозг весит меньше чем твои комплексы",
+    "ты бесполезнее чем кнопка на пульте",
+    "ты - причина почему люди не верят в бога",
+    "даже моя бабушка умнее тебя, а она умерла 10 лет назад",
+    "ты как программа без кода - просто ошибка",
+    "твоя жизнь - это баг в матрице",
+    "ты настолько тупой, что бот тебя переумнее",
+    "если бы тупость была олимпийским спортом, ты был бы чемпионом",
+    "ты как подарок, который никто не хотел получать",
+    "твоё лицо даже мать не может любить",
+    "ты такой тупой, что даже гугл не знает ответа",
+    "твой отец хотел сына, а получил это",
+    "ты как ошибка 404 - просто не найден",
+    "твой IQ равен комнатной температуре",
+    "ты настолько бесполезен, что даже паразиты тебя игнорируют",
+    "ты как сломанный будильник - бесполезный и раздражающий",
+    "твоя жизнь - это мем, только никому не смешно",
+    "ты как Windows Vista - одна большая ошибка",
+    "ты настолько тупой, что это заразно",
+    "даже стул умнее тебя, он хотя бы стоит прямо",
+    "ты как курица без головы - бегаешь и не знаешь зачем",
+    "твои друзья - просто актёры, которые получают зарплату за общение с тобой",
+    "ты как просроченный йогурт - уже никому не нужен",
+    "твоя жизнь - это плохая шутка, которую никто не понял",
+    "ты как игра без сохранения - всё зря",
+    "даже мой код чище, чем твои мысли"
 ]
 
+# --- УНИЧИТАЛЬНЫЕ ФРАЗЫ ---
+DESTROY_PHRASES = [
+    "я сейчас тебя так унижу, что ты удалишь вк",
+    "ты просто кусок мяса на стуле",
+    "твой отец ошибся, когда не использовал резинку",
+    "ты как ошибка в коде - одна большая проблема",
+    "даже вирусы не хотят жить в твоём теле",
+    "ты - причина почему аборты не запрещают",
+    "твоя мама плачет каждую ночь, глядя на тебя",
+    "ты как Windows без антивируса - одна сплошная уязвимость",
+    "твой мозг нуждается в перезагрузке, хотя там и так пусто",
+    "ты настолько глуп, что даже рыба из аквариума переплывает в другой угол, когда видит тебя"
+]
+
+# --- НАСМЕШКИ ---
+MOCK_PHRASES = [
+    "ха-ха, ты реально думал что ты важен?",
+    "ты смешной, даже когда не пытаешься",
+    "ооо, какой смешной, продолжай, мне нужен повод посмеяться",
+    "аххахахаха, ты серьёзно?",
+    "ты как клоун, только без работы",
+    "даже шутки про тебя смешнее тебя самого",
+    "ты как мем, только несмешной"
+]
+
+def get_random_insult(target: str = "") -> str:
+    """Генерирует оскорбление с упоминанием цели"""
+    insult = random.choice(CRUEL_INSULTS)
+    if target and random.random() < 0.7:
+        name = target.split()[0] if " " in target else target
+        insult = f"{name}, {insult}"
+    
+    # Добавляем случайный суффикс
+    suffixes = ["", "!!!", "?!", "...", "))))", "хаха", "бля", "как тебе такое?"]
+    if random.random() < 0.4:
+        insult = f"{insult} {random.choice(suffixes)}"
+    
+    # Иногда добавляем эмодзи
+    if random.random() < 0.3:
+        emojis = ["🤬", "😈", "💀", "👊", "🔥", "🤡", "😤", "👎", "💩", "🤮"]
+        insult = f"{insult} {random.choice(emojis)}"
+    
+    return insult
+
+def get_destroy_phrase(target: str = "") -> str:
+    """Уничтожительная фраза"""
+    phrase = random.choice(DESTROY_PHRASES)
+    if target and random.random() < 0.5:
+        name = target.split()[0] if " " in target else target
+        phrase = f"{name}, {phrase}"
+    return phrase
+
+def get_mock_phrase() -> str:
+    """Насмешка"""
+    return random.choice(MOCK_PHRASES)
+
+def generate_spam_message(target: str = "") -> str:
+    """Генерация спам-сообщения"""
+    types = ["insult", "destroy", "mock", "insult", "insult"]
+    choice = random.choice(types)
+    
+    if choice == "insult":
+        return get_random_insult(target)
+    elif choice == "destroy":
+        return get_destroy_phrase(target)
+    else:
+        return get_mock_phrase()
+
+# --- ХРАНЕНИЕ ДАННЫХ ---
 DATA_FILE = "spam_data.json"
 
 def load_data() -> Dict[str, Any]:
@@ -49,9 +140,11 @@ def load_data() -> Dict[str, Any]:
     except (FileNotFoundError, json.JSONDecodeError):
         return {
             "spam_enabled": False,
-            "spam_interval": 1,
+            "spam_interval": 0.5,
             "last_spam": {},
-            "spam_intensity": 1
+            "target_user": "",
+            "target_name": "",
+            "spam_count": 0
         }
 
 def save_data(data: Dict[str, Any]):
@@ -63,6 +156,7 @@ def save_data(data: Dict[str, Any]):
 
 data = load_data()
 
+# --- КЛАСС VK API ---
 class VKGroupAPI:
     def __init__(self, token: str, group_id: int, version: str = "5.131"):
         self.token = token
@@ -95,6 +189,9 @@ class VKGroupAPI:
             "random_id": int(time.time() * 1000) + random.randint(1, 99999)
         })
     
+    def users_get(self, user_ids: int) -> Dict:
+        return self._request("users.get", {"user_ids": user_ids})
+    
     def groups_get_by_id(self) -> Dict:
         return self._request("groups.getById", {"group_id": self.group_id})
     
@@ -115,107 +212,169 @@ class VKGroupAPI:
 
 vk = VKGroupAPI(TOKEN, GROUP_ID)
 
-def generate_spam() -> str:
-    insult = random.choice(INSULTS)
-    if random.random() < 0.3:
-        prefix = random.choice(["эй", "слушай", "ты", "а ну"])
-        insult = f"{prefix} {insult}"
-    if random.random() < 0.5:
-        insult = f"{insult}!"
-    return insult
+async def get_user_name(user_id: int) -> str:
+    """Получает имя пользователя по ID"""
+    try:
+        result = vk.users_get(user_id)
+        if "error" not in result and result:
+            user = result[0]
+            return f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+        return f"ID {user_id}"
+    except:
+        return f"ID {user_id}"
 
 async def send_spam(peer_id: int):
+    """Отправляет спам-сообщение"""
     if not data.get("spam_enabled", False):
         return
     
     now = time.time()
     last_spam = data["last_spam"].get(str(peer_id), 0)
-    interval = data.get("spam_interval", 1)
+    interval = data.get("spam_interval", 0.5)
     
     if now - last_spam < interval:
         return
     
-    message = generate_spam()
+    # Получаем цель
+    target = data.get("target_name", "")
+    
+    # Генерируем сообщение
+    message = generate_spam_message(target)
+    
+    # Счётчик спама
+    data["spam_count"] = data.get("spam_count", 0) + 1
+    
+    # Добавляем счётчик каждые 10 сообщений
+    if data["spam_count"] % 10 == 0:
+        message = f"{message}\n\n[СПАМ №{data['spam_count']}]"
+    
     try:
         vk.messages_send(peer_id, message)
         data["last_spam"][str(peer_id)] = now
         save_data(data)
-        logger.info(f"Spam to {peer_id}")
+        logger.info(f"Spam #{data['spam_count']} to {peer_id}")
     except Exception as e:
         logger.error(f"Send error: {e}")
 
 async def process_message(message_data: dict):
     try:
-        # Новый формат сообщений от группы
+        # Получаем сообщение из правильного формата
         if "object" in message_data and "message" in message_data["object"]:
             msg = message_data["object"]["message"]
             peer_id = msg.get("peer_id", 0)
             user_id = msg.get("from_id", 0)
             text = msg.get("text", "")
         else:
-            # Старый формат
             peer_id = message_data.get("peer_id", 0)
             user_id = message_data.get("from_id", 0)
             text = message_data.get("text", "")
         
-        logger.info(f"Message from {user_id}: {text[:30]}")
-        
+        # Игнорируем сообщения от бота
         if user_id < 0:
             return
         
+        logger.info(f"Message from {user_id}: {text[:30]}")
+        
+        # Обработка команд
         if text.startswith(PREFIX):
             command = text[1:].strip().lower()
             
+            # --- ВКЛЮЧИТЬ СПАМ ---
             if command == "спам вкл":
                 data["spam_enabled"] = True
+                data["spam_count"] = 0
                 save_data(data)
-                vk.messages_send(peer_id, "SPAM ON")
+                vk.messages_send(peer_id, "🤬 СПАМ ВКЛЮЧЕН! Начинаю уничтожать чат!")
                 logger.info("Spam ON")
                 return
             
+            # --- ВЫКЛЮЧИТЬ СПАМ ---
             if command == "спам выкл":
                 data["spam_enabled"] = False
                 save_data(data)
-                vk.messages_send(peer_id, "SPAM OFF")
+                vk.messages_send(peer_id, "💀 СПАМ ВЫКЛЮЧЕН! Ухожу в тень...")
                 logger.info("Spam OFF")
                 return
             
+            # --- УСТАНОВИТЬ ЦЕЛЬ ---
+            if command.startswith("цель "):
+                target_id = command.split()[1] if len(command.split()) > 1 else ""
+                if target_id.isdigit():
+                    target_id = int(target_id)
+                    name = await get_user_name(target_id)
+                    data["target_user"] = target_id
+                    data["target_name"] = name
+                    save_data(data)
+                    vk.messages_send(peer_id, f"🎯 Цель установлена: {name}\nТеперь спам будет по ней!")
+                    logger.info(f"Target set: {name} ({target_id})")
+                else:
+                    vk.messages_send(peer_id, "❌ Укажите ID пользователя\nПример: !цель 123456789")
+                return
+            
+            # --- ОТМЕНИТЬ ЦЕЛЬ ---
+            if command == "цель выкл":
+                data["target_user"] = ""
+                data["target_name"] = ""
+                save_data(data)
+                vk.messages_send(peer_id, "❌ Цель отменена! Спам по всем")
+                return
+            
+            # --- УСТАНОВИТЬ ИНТЕРВАЛ ---
             if command.startswith("интервал "):
                 try:
                     interval = float(command.split()[1])
-                    if interval < 0.5:
-                        vk.messages_send(peer_id, "Min 0.5s")
+                    if interval < 0.1:
+                        vk.messages_send(peer_id, "❌ Минимум 0.1 секунды!")
                         return
                     data["spam_interval"] = interval
                     save_data(data)
-                    vk.messages_send(peer_id, f"Interval: {interval}s")
+                    vk.messages_send(peer_id, f"⏱ Интервал: {interval} секунд")
                 except:
-                    vk.messages_send(peer_id, "!interval [seconds]")
+                    vk.messages_send(peer_id, "❌ !интервал [секунды]")
                 return
             
+            # --- СТАТУС ---
             if command == "статус":
-                status = "ON" if data.get("spam_enabled") else "OFF"
-                interval = data.get("spam_interval", 1)
-                vk.messages_send(peer_id, f"Status: {status}\nInterval: {interval}s")
+                status = "ВКЛЮЧЕН 🔥" if data.get("spam_enabled") else "ВЫКЛЮЧЕН 💤"
+                interval = data.get("spam_interval", 0.5)
+                target = data.get("target_name", "Нет")
+                count = data.get("spam_count", 0)
+                vk.messages_send(peer_id, 
+                    f"🤬 **СТАТУС СПАМ-БОТА**\n\n"
+                    f"Статус: {status}\n"
+                    f"Интервал: {interval}с\n"
+                    f"Цель: {target}\n"
+                    f"Всего спама: {count}\n"
+                    f"Фраз: {len(CRUEL_INSULTS)}")
                 return
             
+            # --- ПОМОЩЬ ---
             if command == "помощь":
-                vk.messages_send(peer_id, 
-                    "!спам вкл - ON\n"
-                    "!спам выкл - OFF\n"
-                    "!интервал 1 - Interval\n"
-                    "!статус - Status\n"
-                    "!помощь - Help")
+                help_text = (
+                    "🤬 **КОМАНДЫ ЖЕСТОКОГО СПАМ-БОТА**\n\n"
+                    "!спам вкл - Включить адский спам\n"
+                    "!спам выкл - Выключить спам\n"
+                    "!цель [ID] - Установить жертву\n"
+                    "!цель выкл - Отменить цель\n"
+                    "!интервал [сек] - Скорость спама\n"
+                    "!статус - Статус бота\n"
+                    "!помощь - Эта справка\n\n"
+                    "💀 Бот уничтожает всех без админки!\n"
+                    f"🔥 Всего оскорблений: {len(CRUEL_INSULTS)}"
+                )
+                vk.messages_send(peer_id, help_text)
                 return
         
+        # --- АВТОМАТИЧЕСКИЙ СПАМ (если включен) ---
         await send_spam(peer_id)
             
     except Exception as e:
         logger.error(f"Process error: {e}")
 
 async def main():
-    logger.info("SPAM BOT START")
+    logger.info("🤬 CRUEL SPAM BOT START")
     logger.info(f"Group: {GROUP_ID}")
+    logger.info(f"Insults: {len(CRUEL_INSULTS)}")
     
     try:
         info = vk.groups_get_by_id()
@@ -237,7 +396,6 @@ async def main():
     ts = lp_info.get("ts")
     
     logger.info(f"Server: {server}")
-    logger.info(f"Key: {key[:20]}...")
     logger.info(f"TS: {ts}")
     
     if not server:
@@ -247,17 +405,14 @@ async def main():
     if not server.startswith(('http://', 'https://')):
         server = 'https://' + server
     
-    logger.info("BOT READY")
-    logger.info("Commands: !помощь")
-    
-    last_message_id = 0
+    logger.info("✅ CRUEL SPAM BOT READY")
+    logger.info("💀 Commands: !помощь")
     
     while True:
         try:
             response = vk.long_poll_request(server, key, ts)
             
             if "failed" in response:
-                logger.warning(f"Long Poll failed: {response['failed']}")
                 if response["failed"] == 1:
                     ts = response.get("ts", ts)
                     continue
@@ -274,17 +429,10 @@ async def main():
             ts = response.get("ts", ts)
             updates = response.get("updates", [])
             
-            if updates:
-                logger.info(f"Updates: {len(updates)}")
-            
             for update in updates:
                 try:
-                    logger.info(f"Update type: {update.get('type', 'unknown')}")
-                    
-                    # Обрабатываем только новые сообщения
                     if update.get("type") == "message_new":
                         await process_message(update)
-                    
                 except Exception as e:
                     logger.error(f"Update error: {e}")
                     
