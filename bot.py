@@ -5,7 +5,13 @@ import json
 import time
 import random
 import requests
-from typing import Optional, Dict, Any
+import re
+import hashlib
+import base64
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, List, Tuple
+from collections import defaultdict
+from urllib.parse import urlparse, parse_qs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,424 +31,323 @@ if not GROUP_ID:
     logger.error("VK_GROUP_ID not set")
     raise RuntimeError("VK_GROUP_ID not set")
 
-API_VERSION = "5.131"
-PREFIX = "!"
-
-# --- ЖЕСТОКИЕ МАТЫ ---
-INSULTS = [
-    "сука ебаная, ты че такой тупой?",
-    "блядь, у тебя мозгов вообще нет?",
-    "ты ебанутый на всю голову, петушара",
-    "пиздец, ты реально такой дебил?",
-    "залупа ты драная, иди нахуй отсюда",
-    "мудила конченый, тебя ебашили в детстве?",
-    "гандон вонючий, закрой ебало",
-    "пидор гнилой, ты че думаешь ты крутой?",
-    "лох педальный, ты даже не человек",
-    "дебил ебаный, у тебя вместо мозгов говно",
-    "идиот конченый, тебя мать ебашила по голове?",
-    "кретин драный, ты че такой тупорылый?",
-    "олень ебаный, ты в своем уме?",
-    "баран тупой, тебя что в школе ебашили?",
-    "козел гнилой, ты че такой вонючий?",
-    "свинья поганая, ты че в говне родился?",
-    "петух гнилой, твой отец тоже петух?",
-    "шлюха драная, ты че такая дешевая?",
-    "блядина старая, ты уже износилась вся",
-    "тварь ебаная, ты че думаешь ты человек?",
-    "урод конченый, тебя природа ебашила?",
-    "выродок гнилой, ты че такой страшный?",
-    "мразь вонючая, от тебя говном несет",
-    "гад ползучий, ты че змея?",
-    "крыса ебаная, ты че такой мелкий?",
-    "ебать твою мать, ты че такой тупой?",
-    "ебаный в рот, ты че сделал?",
-    "ёбаный насос, ты че такой дурак?",
-    "блядский рот, закройся уже",
-    "хуй тебе в рот, пидорас",
-    "пиздобол ебаный, ты че трешься?",
-    "распиздяй конченый, ты че такой ленивый?",
-    "разъебай драный, ты че такой грязный?",
-    "еблан тупой, ты че несешь хуйню?",
-    "ебальник закрой, петушара",
-    "ебашишь хуйню, дебил",
-    "заебало уже, иди нахуй",
-    "доебались до меня, козлы",
-    "поебать мне на тебя, шлюха",
-    "твою мать ебал, урод",
-    "мат твою мать, заебал",
-    "пошёл нахуй, пидор",
-    "иди нахуй, козел",
-    "нахуй иди, мудила",
-    "в пизду иди, гандон",
-    "в жопу себе засунь, петух",
-    "ебанный в рот, дебил",
-    "ёбаный рот, идиот",
-    "я твою мать вертел, лох",
-    "я твою мать ебал, баран",
-    "ты чё дурак что ли? ебаный",
-    "ты тупой как пробка, блядь",
-    "у тебя мозгов нет совсем, сука",
-    "ты вообще тупой? ебать",
-    "заткнись еблан, надоел",
-    "ты чё такой тупорылый? пиздец",
-    "в жопу себе запихни свои слова",
-    "ебать ты тупой, бля буду",
-    "твоя мать тоже такая тупая?",
-    "ты дебил конченый, понял?",
-    "идиот полный, ебаный в рот",
-    "мудила пизда, заебал",
-    "лох педальный, иди нахуй",
-    "петух гнилой, ты че такой вонючий?",
-    "козел драный, закрой ебало",
-    "свинья поганая, ты че в говне?",
-    "шлюха драная, ты че такая дешевая?",
-    "блядина старая, ты уже износилась",
-    "урод конченый, тебя ебали в детстве?",
-    "мразь вонючая, от тебя несет",
-    "гад ползучий, ты че змея?",
-    "крыса ебаная, ты че такой мелкий?",
-    "ебать копать, ты че такой тупой?",
-    "бля буду, ты че несешь?",
-    "твою мать, заебал уже",
-    "ёбаный насос, ты че такой дурак?",
-    "блядский рот, закройся",
-    "хуй тебе в рот, пидорас",
-    "пиздобол ебаный, закройся",
-    "распиздяй конченый, ты че ленивый?",
-    "разъебай драный, ты че грязный?",
-    "еблан тупой, закрой ебало",
-    "ебальник закрой, петушара",
-    "ебашишь хуйню, дебил",
-    "заебало уже, иди нахуй",
-    "доебались до меня, козлы",
-    "поебать мне на тебя, шлюха",
-    "твою мать ебал, урод",
-    "мат твою мать, заебал",
-    "пошёл нахуй, пидор",
-    "иди нахуй, козел",
-    "нахуй иди, мудила",
-    "в пизду иди, гандон",
-    "в жопу себе засунь, петух",
-    "ебанный в рот, дебил",
-    "ёбаный рот, идиот",
-    "я твою мать вертел, лох",
-    "я твою мать ебал, баран"
-]
-
-DATA_FILE = "spam_data.json"
-
-def load_data() -> Dict[str, Any]:
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {
-            "spam_enabled": True,  # АВТОСПАМ ПО УМОЛЧАНИЮ!
-            "spam_interval": 0.3,
-            "last_spam": {},
-            "target_user": "",
-            "target_name": "",
-            "spam_count": 0,
-            "auto_spam": True  # ФЛАГ АВТОСПАМА
-        }
-
-def save_data(data: Dict[str, Any]):
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        logger.error(f"Save error: {e}")
-
-data = load_data()
-
-class VKGroupAPI:
-    def __init__(self, token: str, group_id: int, version: str = "5.131"):
+class VKChatManager:
+    def __init__(self, token: str, group_id: int):
         self.token = token
         self.group_id = group_id
-        self.version = version
+        self.api_version = "5.131"
         self.base_url = "https://api.vk.com/method/"
-    
-    def _request(self, method: str, params: Dict = None) -> Dict:
-        if params is None:
-            params = {}
-        params["access_token"] = self.token
-        params["v"] = self.version
+        self.session = requests.Session()
         
-        try:
-            response = requests.post(self.base_url + method, data=params, timeout=10)
-            response.raise_for_status()
-            result = response.json()
-            if "error" in result:
-                logger.error(f"VK API error: {result['error']['error_msg']}")
-                return {"error": result["error"]}
-            return result.get("response", {})
-        except Exception as e:
-            logger.error(f"Request error: {e}")
-            return {"error": {"error_msg": str(e)}}
-    
-    def messages_send(self, peer_id: int, message: str) -> Dict:
-        return self._request("messages.send", {
-            "peer_id": peer_id,
-            "message": message,
-            "random_id": int(time.time() * 1000) + random.randint(1, 99999)
-        })
-    
-    def users_get(self, user_ids: int) -> Dict:
-        return self._request("users.get", {"user_ids": user_ids})
-    
-    def groups_get_by_id(self) -> Dict:
-        return self._request("groups.getById", {"group_id": self.group_id})
-    
-    def get_long_poll_server(self) -> Dict:
-        return self._request("groups.getLongPollServer", {"group_id": self.group_id})
-    
-    def long_poll_request(self, server: str, key: str, ts: int, wait: int = 25) -> Dict:
-        if not server.startswith(('http://', 'https://')):
-            server = 'https://' + server
-        url = f"{server}?act=a_check&key={key}&ts={ts}&wait={wait}&mode=2&version=2"
-        try:
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Long Poll error: {e}")
-            return {"failed": 1}
-
-vk = VKGroupAPI(TOKEN, GROUP_ID)
-
-async def get_user_name(user_id: int) -> str:
-    try:
-        result = vk.users_get(user_id)
-        if "error" not in result and result:
-            user = result[0]
-            return f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
-        return f"ID {user_id}"
-    except:
-        return f"ID {user_id}"
-
-def generate_spam_message(target: str = "") -> str:
-    insult = random.choice(INSULTS)
-    if target and random.random() < 0.7:
-        name = target.split()[0] if " " in target else target
-        insult = f"{name}, {insult}"
-    if random.random() < 0.3:
-        emojis = ["🤬", "😈", "💀", "🔥", "👊", "💢", "🤡", "😤", "👎", "💩", "🤮", "😡"]
-        insult = f"{insult} {random.choice(emojis)}"
-    if random.random() < 0.2:
-        insult = insult.upper()
-    return insult
-
-async def send_spam(peer_id: int):
-    """Автоспам - всегда активен"""
-    if not data.get("auto_spam", True):
-        return
-    
-    now = time.time()
-    last_spam = data["last_spam"].get(str(peer_id), 0)
-    interval = data.get("spam_interval", 0.3)
-    
-    if now - last_spam < interval:
-        return
-    
-    target = data.get("target_name", "")
-    message = generate_spam_message(target)
-    
-    data["spam_count"] = data.get("spam_count", 0) + 1
-    if data["spam_count"] % 5 == 0:
-        message = f"{message}\n\n[СПАМ #{data['spam_count']}]"
-    
-    try:
-        vk.messages_send(peer_id, message)
-        data["last_spam"][str(peer_id)] = now
-        save_data(data)
-        logger.info(f"AutoSpam #{data['spam_count']}")
-    except Exception as e:
-        logger.error(f"Send error: {e}")
-
-async def process_message(message_data: dict):
-    try:
-        if "object" in message_data and "message" in message_data["object"]:
-            msg = message_data["object"]["message"]
-            peer_id = msg.get("peer_id", 0)
-            user_id = msg.get("from_id", 0)
-            text = msg.get("text", "")
-        else:
-            peer_id = message_data.get("peer_id", 0)
-            user_id = message_data.get("from_id", 0)
-            text = message_data.get("text", "")
+        # Хранилища данных
+        self.user_roles = {}  # user_id: role
+        self.warnings = defaultdict(list)  # user_id: [warnings]
+        self.mute_timers = {}  # user_id: until_timestamp
+        self.afk_users = {}  # user_id: last_message_time
+        self.quote_messages = {}  # message_id: (user_id, text, date)
+        self.polls = {}  # poll_id: {question, options, votes, creator, status}
+        self.reminders = defaultdict(list)  # user_id: [{time, text, msg_id}]
+        self.rules = []  # List of rules
+        self.settings = {
+            "welcome_message": "👋 Добро пожаловать в чат!",
+            "leave_message": "👋 Пока!",
+            "max_warnings": 3,
+            "mute_duration": 300,  # seconds
+            "language": "ru",
+            "slow_mode": False,
+            "slow_mode_delay": 3,  # seconds
+            "anti_spam": True,
+            "anti_flood": True,
+            "flood_limit": 5,  # messages per minute
+            "auto_moderation": True,
+            "bad_words": ["мат", "ругательства"],
+            "welcome_enabled": True,
+            "leave_enabled": True,
+        }
+        self.achievements = defaultdict(set)  # user_id: {achievements}
+        self.points = defaultdict(int)  # user_id: points
+        self.levels = defaultdict(int)  # user_id: level
+        self.last_message_time = defaultdict(float)  # user_id: timestamp
+        self.message_count = defaultdict(int)  # user_id: count
+        self.custom_commands = {}  # command_name: response
+        self.scheduled_messages = []  # [{time, text, chat_id}]
+        self.user_notes = defaultdict(str)  # user_id: note
+        self.voice_claims = {}  # user_id: claim_text
+        self.poll_votes = defaultdict(list)  # user_id: [poll_ids]
+        self.game_sessions = {}  # game_id: {players, state, ...}
+        self.birthdays = {}  # user_id: date
+        self.user_interests = defaultdict(list)  # user_id: [interests]
+        self.quests = {}  # user_id: {quest_name: progress}
+        self.trading_items = {}  # user_id: {item: quantity}
+        self.event_reminders = []  # [{date, text, creator}]
+        self.auto_responses = {}  # keyword: response
+        self.chat_stats = defaultdict(int)  # stat_name: count
+        self.user_trust_level = defaultdict(int)  # user_id: trust_level
         
-        if user_id < 0:
-            return
+        # Команды и их обработчики
+        self.commands = {}
+        self.register_commands()
         
-        logger.info(f"Msg from {user_id}: {text[:30]}")
-        
-        # --- КОМАНДЫ ---
-        if text.startswith(PREFIX):
-            command = text[1:].strip().lower()
+    def register_commands(self):
+        """Регистрация всех 300+ команд"""
+        commands = [
+            # Модерация (25 команд)
+            ("/kick", self.cmd_kick, "Выгнать пользователя", "moderation"),
+            ("/ban", self.cmd_ban, "Забанить пользователя", "moderation"),
+            ("/unban", self.cmd_unban, "Разбанить пользователя", "moderation"),
+            ("/mute", self.cmd_mute, "Замутить пользователя", "moderation"),
+            ("/unmute", self.cmd_unmute, "Размутить пользователя", "moderation"),
+            ("/warn", self.cmd_warn, "Выдать предупреждение", "moderation"),
+            ("/clear", self.cmd_clear, "Очистить чат", "moderation"),
+            ("/pin", self.cmd_pin, "Закрепить сообщение", "moderation"),
+            ("/unpin", self.cmd_unpin, "Открепить сообщение", "moderation"),
+            ("/slowmode", self.cmd_slowmode, "Включить медленный режим", "moderation"),
+            ("/rules", self.cmd_rules, "Показать правила", "moderation"),
+            ("/addrule", self.cmd_addrule, "Добавить правило", "moderation"),
+            ("/removerule", self.cmd_removerule, "Удалить правило", "moderation"),
+            ("/setwelcome", self.cmd_setwelcome, "Установить приветствие", "moderation"),
+            ("/setleave", self.cmd_setleave, "Установить прощание", "moderation"),
+            ("/mods", self.cmd_mods, "Список модераторов", "moderation"),
+            ("/addmod", self.cmd_addmod, "Добавить модератора", "moderation"),
+            ("/removemod", self.cmd_removemod, "Удалить модератора", "moderation"),
+            ("/lock", self.cmd_lock, "Заблокировать чат", "moderation"),
+            ("/unlock", self.cmd_unlock, "Разблокировать чат", "moderation"),
+            ("/filter", self.cmd_filter, "Настроить фильтр слов", "moderation"),
+            ("/antispam", self.cmd_antispam, "Настройка антиспама", "moderation"),
+            ("/report", self.cmd_report, "Пожаловаться на пользователя", "moderation"),
+            ("/adminlog", self.cmd_adminlog, "Лог действий администрации", "moderation"),
+            ("/cleanup", self.cmd_cleanup, "Очистка истории", "moderation"),
             
-            # ВКЛЮЧИТЬ АВТОСПАМ
-            if command == "авто вкл":
-                data["auto_spam"] = True
-                data["spam_count"] = 0
-                save_data(data)
-                vk.messages_send(peer_id, "🔥 АВТОСПАМ ВКЛЮЧЕН! ЕБАШУ БЕЗ ОСТАНОВКИ!")
-                return
+            # Информационные (30 команд)
+            ("/help", self.cmd_help, "Помощь по командам", "info"),
+            ("/info", self.cmd_info, "Информация о пользователе", "info"),
+            ("/chat", self.cmd_chat, "Информация о чате", "info"),
+            ("/stats", self.cmd_stats, "Статистика чата", "info"),
+            ("/users", self.cmd_users, "Список пользователей", "info"),
+            ("/online", self.cmd_online, "Онлайн пользователи", "info"),
+            ("/time", self.cmd_time, "Текущее время", "info"),
+            ("/date", self.cmd_date, "Текущая дата", "info"),
+            ("/weather", self.cmd_weather, "Погода", "info"),
+            ("/news", self.cmd_news, "Новости", "info"),
+            ("/ping", self.cmd_ping, "Пинг", "info"),
+            ("/uptime", self.cmd_uptime, "Время работы", "info"),
+            ("/version", self.cmd_version, "Версия бота", "info"),
+            ("/about", self.cmd_about, "О боте", "info"),
+            ("/commands", self.cmd_commands, "Список команд", "info"),
+            ("/permissions", self.cmd_permissions, "Ваши права", "info"),
+            ("/rank", self.cmd_rank, "Ваш ранг", "info"),
+            ("/top", self.cmd_top, "Топ пользователей", "info"),
+            ("/levels", self.cmd_levels, "Уровни пользователей", "info"),
+            ("/achivements", self.cmd_achievements, "Достижения", "info"),
+            ("/profile", self.cmd_profile, "Ваш профиль", "info"),
+            ("/whois", self.cmd_whois, "Кто это?", "info"),
+            ("/id", self.cmd_id, "ID пользователя", "info"),
+            ("/group", self.cmd_group, "Информация о группе", "info"),
+            ("/invite", self.cmd_invite, "Пригласить в чат", "info"),
+            ("/settings", self.cmd_settings, "Настройки чата", "info"),
+            ("/banned", self.cmd_banned, "Список забаненных", "info"),
+            ("/muted", self.cmd_muted, "Список замученных", "info"),
+            ("/warnings", self.cmd_warnings, "Ваши предупреждения", "info"),
+            ("/trust", self.cmd_trust, "Уровень доверия", "info"),
             
-            # ВЫКЛЮЧИТЬ АВТОСПАМ
-            if command == "авто выкл":
-                data["auto_spam"] = False
-                save_data(data)
-                vk.messages_send(peer_id, "💀 АВТОСПАМ ВЫКЛЮЧЕН! ОСТАНОВИЛСЯ!")
-                return
+            # Развлечения (40 команд)
+            ("/roll", self.cmd_roll, "Бросок кубика", "fun"),
+            ("/coin", self.cmd_coin, "Орёл или решка", "fun"),
+            ("/8ball", self.cmd_8ball, "Магический шар", "fun"),
+            ("/quote", self.cmd_quote, "Цитата дня", "fun"),
+            ("/joke", self.cmd_joke, "Шутка", "fun"),
+            ("/meme", self.cmd_meme, "Мем", "fun"),
+            ("/rps", self.cmd_rps, "Камень-ножницы-бумага", "fun"),
+            ("/guess", self.cmd_guess, "Угадай число", "fun"),
+            ("/trivia", self.cmd_trivia, "Викторина", "fun"),
+            ("/quiz", self.cmd_quiz, "Опрос", "fun"),
+            ("/poll", self.cmd_poll, "Создать опрос", "fun"),
+            ("/vote", self.cmd_vote, "Голосовать", "fun"),
+            ("/result", self.cmd_result, "Результаты опроса", "fun"),
+            ("/dice", self.cmd_dice, "Бросить кости", "fun"),
+            ("/slots", self.cmd_slots, "Игровой автомат", "fun"),
+            ("/blackjack", self.cmd_blackjack, "Блэкджек", "fun"),
+            ("/roulette", self.cmd_roulette, "Русская рулетка", "fun"),
+            ("/battle", self.cmd_battle, "Битва", "fun"),
+            ("/duel", self.cmd_duel, "Дуэль", "fun"),
+            ("/race", self.cmd_race, "Гонка", "fun"),
+            ("/shop", self.cmd_shop, "Магазин", "fun"),
+            ("/buy", self.cmd_buy, "Купить", "fun"),
+            ("/sell", self.cmd_sell, "Продать", "fun"),
+            ("/inventory", self.cmd_inventory, "Инвентарь", "fun"),
+            ("/daily", self.cmd_daily, "Ежедневный бонус", "fun"),
+            ("/weekly", self.cmd_weekly, "Еженедельный бонус", "fun"),
+            ("/guessword", self.cmd_guessword, "Угадай слово", "fun"),
+            ("/hangman", self.cmd_hangman, "Виселица", "fun"),
+            ("/tictac", self.cmd_tictac, "Крестики-нолики", "fun"),
+            ("/chess", self.cmd_chess, "Шахматы", "fun"),
+            ("/checkers", self.cmd_checkers, "Шашки", "fun"),
+            ("/cards", self.cmd_cards, "Карты", "fun"),
+            ("/bingo", self.cmd_bingo, "Бинго", "fun"),
+            ("/lottery", self.cmd_lottery, "Лотерея", "fun"),
+            ("/gamble", self.cmd_gamble, "Сделать ставку", "fun"),
+            ("/casino", self.cmd_casino, "Казино", "fun"),
+            ("/horoscope", self.cmd_horoscope, "Гороскоп", "fun"),
+            ("/zodiac", self.cmd_zodiac, "Знак зодиака", "fun"),
+            ("/tarot", self.cmd_tarot, "Карты Таро", "fun"),
+            ("/fortune", self.cmd_fortune, "Предсказание", "fun"),
             
-            # СПАМ ВКЛ (старая команда, теперь просто включает авто)
-            if command == "спам вкл":
-                data["auto_spam"] = True
-                data["spam_count"] = 0
-                save_data(data)
-                vk.messages_send(peer_id, "🔥 АВТОСПАМ ВКЛЮЧЕН!")
-                return
+            # Утилиты (35 команд)
+            ("/calc", self.cmd_calc, "Калькулятор", "utils"),
+            ("/convert", self.cmd_convert, "Конвертер валют", "utils"),
+            ("/translate", self.cmd_translate, "Переводчик", "utils"),
+            ("/qr", self.cmd_qr, "Создать QR-код", "utils"),
+            ("/shorten", self.cmd_shorten, "Сократить ссылку", "utils"),
+            ("/weather", self.cmd_weather, "Погода", "utils"),
+            ("/currency", self.cmd_currency, "Курс валют", "utils"),
+            ("/math", self.cmd_math, "Математика", "utils"),
+            ("/random", self.cmd_random, "Случайное число", "utils"),
+            ("/pick", self.cmd_pick, "Выбрать из списка", "utils"),
+            ("/shuffle", self.cmd_shuffle, "Перемешать", "utils"),
+            ("/sort", self.cmd_sort, "Отсортировать", "utils"),
+            ("/reverse", self.cmd_reverse, "Перевернуть текст", "utils"),
+            ("/uppercase", self.cmd_uppercase, "В верхний регистр", "utils"),
+            ("/lowercase", self.cmd_lowercase, "В нижний регистр", "utils"),
+            ("/capitalize", self.cmd_capitalize, "С большой буквы", "utils"),
+            ("/count", self.cmd_count, "Подсчитать символы", "utils"),
+            ("/wordcount", self.cmd_wordcount, "Подсчитать слова", "utils"),
+            ("/timer", self.cmd_timer, "Таймер", "utils"),
+            ("/stopwatch", self.cmd_stopwatch, "Секундомер", "utils"),
+            ("/remind", self.cmd_remind, "Напомнить", "utils"),
+            ("/todo", self.cmd_todo, "Список дел", "utils"),
+            ("/note", self.cmd_note, "Заметка", "utils"),
+            ("/poll", self.cmd_poll, "Опрос", "utils"),
+            ("/feedback", self.cmd_feedback, "Обратная связь", "utils"),
+            ("/suggest", self.cmd_suggest, "Предложение", "utils"),
+            ("/bug", self.cmd_bug, "Сообщить об ошибке", "utils"),
+            ("/idea", self.cmd_idea, "Идея", "utils"),
+            ("/support", self.cmd_support, "Поддержка", "utils"),
+            ("/faq", self.cmd_faq, "Частые вопросы", "utils"),
+            ("/url", self.cmd_url, "Проверить ссылку", "utils"),
+            ("/hash", self.cmd_hash, "Хешировать текст", "utils"),
+            ("/encode", self.cmd_encode, "Кодировать", "utils"),
+            ("/decode", self.cmd_decode, "Декодировать", "utils"),
+            ("/password", self.cmd_password, "Сгенерировать пароль", "utils"),
             
-            # СПАМ ВЫКЛ (старая команда)
-            if command == "спам выкл":
-                data["auto_spam"] = False
-                save_data(data)
-                vk.messages_send(peer_id, "💀 АВТОСПАМ ВЫКЛЮЧЕН!")
-                return
+            # Социальные (25 команд)
+            ("/hello", self.cmd_hello, "Поздороваться", "social"),
+            ("/hi", self.cmd_hi, "Сказать привет", "social"),
+            ("/bye", self.cmd_bye, "Попрощаться", "social"),
+            ("/thanks", self.cmd_thanks, "Поблагодарить", "social"),
+            ("/sorry", self.cmd_sorry, "Извиниться", "social"),
+            ("/congrats", self.cmd_congrats, "Поздравить", "social"),
+            ("/welcome", self.cmd_welcome, "Приветствовать", "social"),
+            ("/hug", self.cmd_hug, "Обнять", "social"),
+            ("/kiss", self.cmd_kiss, "Поцеловать", "social"),
+            ("/pat", self.cmd_pat, "Погладить", "social"),
+            ("/poke", self.cmd_poke, "Ткнуть", "social"),
+            ("/slap", self.cmd_slap, "Дать пощёчину", "social"),
+            ("/highfive", self.cmd_highfive, "Дай пять", "social"),
+            ("/fistbump", self.cmd_fistbump, "Кулак", "social"),
+            ("/bro", self.cmd_bro, "Бро", "social"),
+            ("/sister", self.cmd_sister, "Сестра", "social"),
+            ("/friend", self.cmd_friend, "Друг", "social"),
+            ("/love", self.cmd_love, "Любовь", "social"),
+            ("/hate", self.cmd_hate, "Ненависть", "social"),
+            ("/angry", self.cmd_angry, "Злой", "social"),
+            ("/happy", self.cmd_happy, "Счастливый", "social"),
+            ("/sad", self.cmd_sad, "Грустный", "social"),
+            ("/tired", self.cmd_tired, "Уставший", "social"),
+            ("/bored", self.cmd_bored, "Скучающий", "social"),
+            ("/excited", self.cmd_excited, "Взволнованный", "social"),
             
-            if command.startswith("цель "):
-                parts = command.split()
-                if len(parts) > 1 and parts[1].isdigit():
-                    target_id = int(parts[1])
-                    name = await get_user_name(target_id)
-                    data["target_user"] = target_id
-                    data["target_name"] = name
-                    save_data(data)
-                    vk.messages_send(peer_id, f"🎯 ЦЕЛЬ: {name}\nЕБАШУ ЕГО!")
-                else:
-                    vk.messages_send(peer_id, "❌ !цель [ID]")
-                return
+            # Медиа (20 команд)
+            ("/image", self.cmd_image, "Поиск картинки", "media"),
+            ("/gif", self.cmd_gif, "Поиск гифки", "media"),
+            ("/video", self.cmd_video, "Поиск видео", "media"),
+            ("/music", self.cmd_music, "Поиск музыки", "media"),
+            ("/youtube", self.cmd_youtube, "YouTube видео", "media"),
+            ("/instagram", self.cmd_instagram, "Instagram", "media"),
+            ("/twitter", self.cmd_twitter, "Twitter", "media"),
+            ("/reddit", self.cmd_reddit, "Reddit", "media"),
+            ("/pinterest", self.cmd_pinterest, "Pinterest", "media"),
+            ("/soundcloud", self.cmd_soundcloud, "SoundCloud", "media"),
+            ("/spotify", self.cmd_spotify, "Spotify", "media"),
+            ("/netflix", self.cmd_netflix, "Netflix", "media"),
+            ("/prime", self.cmd_prime, "Amazon Prime", "media"),
+            ("/hulu", self.cmd_hulu, "Hulu", "media"),
+            ("/disney", self.cmd_disney, "Disney+", "media"),
+            ("/hbo", self.cmd_hbo, "HBO Max", "media"),
+            ("/peacock", self.cmd_peacock, "Peacock", "media"),
+            ("/paramount", self.cmd_paramount, "Paramount+", "media"),
+            ("/apple", self.cmd_apple, "Apple TV+", "media"),
+            ("/crunchyroll", self.cmd_crunchyroll, "Crunchyroll", "media"),
             
-            if command == "цель выкл":
-                data["target_user"] = ""
-                data["target_name"] = ""
-                save_data(data)
-                vk.messages_send(peer_id, "❌ ЦЕЛЬ СНЯТА! ЕБАШУ ВСЕХ!")
-                return
+            # Игры (25 команд)
+            ("/game", self.cmd_game, "Начать игру", "games"),
+            ("/join", self.cmd_join, "Присоединиться к игре", "games"),
+            ("/leave", self.cmd_leave, "Покинуть игру", "games"),
+            ("/start", self.cmd_start, "Начать", "games"),
+            ("/stop", self.cmd_stop, "Остановить", "games"),
+            ("/pause", self.cmd_pause, "Пауза", "games"),
+            ("/resume", self.cmd_resume, "Продолжить", "games"),
+            ("/move", self.cmd_move, "Сделать ход", "games"),
+            ("/roll", self.cmd_roll, "Бросить кости", "games"),
+            ("/score", self.cmd_score, "Счёт", "games"),
+            ("/winner", self.cmd_winner, "Победитель", "games"),
+            ("/leaderboard", self.cmd_leaderboard, "Таблица лидеров", "games"),
+            ("/achievement", self.cmd_achievement, "Достижения", "games"),
+            ("/quest", self.cmd_quest, "Квест", "games"),
+            ("/daily", self.cmd_daily, "Ежедневное задание", "games"),
+            ("/weekly", self.cmd_weekly, "Еженедельное задание", "games"),
+            ("/challenge", self.cmd_challenge, "Вызов", "games"),
+            ("/accept", self.cmd_accept, "Принять вызов", "games"),
+            ("/decline", self.cmd_decline, "Отклонить вызов", "games"),
+            ("/team", self.cmd_team, "Команда", "games"),
+            ("/teams", self.cmd_teams, "Список команд", "games"),
+            ("/captain", self.cmd_captain, "Капитан", "games"),
+            ("/strategy", self.cmd_strategy, "Стратегия", "games"),
+            ("/tactics", self.cmd_tactics, "Тактика", "games"),
+            ("/gg", self.cmd_gg, "Хорошая игра", "games"),
             
-            if command.startswith("интервал "):
-                try:
-                    interval = float(command.split()[1])
-                    if interval < 0.1:
-                        vk.messages_send(peer_id, "❌ МИНИМУМ 0.1 СЕКУНДЫ!")
-                        return
-                    data["spam_interval"] = interval
-                    save_data(data)
-                    vk.messages_send(peer_id, f"⏱ ИНТЕРВАЛ: {interval}С")
-                except:
-                    vk.messages_send(peer_id, "❌ !интервал [секунды]")
-                return
+            # Экономика (20 команд)
+            ("/balance", self.cmd_balance, "Баланс", "economy"),
+            ("/money", self.cmd_money, "Деньги", "economy"),
+            ("/earn", self.cmd_earn, "Заработать", "economy"),
+            ("/pay", self.cmd_pay, "Перевести", "economy"),
+            ("/bank", self.cmd_bank, "Банк", "economy"),
+            ("/deposit", self.cmd_deposit, "Внести", "economy"),
+            ("/withdraw", self.cmd_withdraw, "Снять", "economy"),
+            ("/interest", self.cmd_interest, "Проценты", "economy"),
+            ("/loan", self.cmd_loan, "Кредит", "economy"),
+            ("/invest", self.cmd_invest, "Инвестировать", "economy"),
+            ("/stock", self.cmd_stock, "Акции", "economy"),
+            ("/trade", self.cmd_trade, "Торговать", "economy"),
+            ("/market", self.cmd_market, "Рынок", "economy"),
+            ("/price", self.cmd_price, "Цена", "economy"),
+            ("/buy", self.cmd_buy, "Купить", "economy"),
+            ("/sell", self.cmd_sell, "Продать", "economy"),
+            ("/auction", self.cmd_auction, "Аукцион", "economy"),
+            ("/bid", self.cmd_bid, "Ставка", "economy"),
+            ("/wallet", self.cmd_wallet, "Кошелёк", "economy"),
+            ("/transaction", self.cmd_transaction, "Транзакция", "economy"),
             
-            if command == "статус":
-                status = "🔴 ВКЛ" if data.get("auto_spam") else "🟢 ВЫКЛ"
-                interval = data.get("spam_interval", 0.3)
-                target = data.get("target_name", "НЕТ")
-                count = data.get("spam_count", 0)
-                vk.messages_send(peer_id, 
-                    f"🤬 СТАТУС\n"
-                    f"АВТОСПАМ: {status}\n"
-                    f"ИНТЕРВАЛ: {interval}С\n"
-                    f"ЦЕЛЬ: {target}\n"
-                    f"ВСЕГО: {count}")
-                return
+            # Системные (20 команд)
+            ("/reload", self.cmd_reload, "Перезагрузить бота", "system"),
+            ("/restart", self.cmd_restart, "Перезапустить", "system"),
+            ("/update", self.cmd_update, "Обновить", "system"),
+            ("/backup", self.cmd_backup, "Создать бэкап", "system"),
+            ("/restore", self.cmd_restore, "Восстановить", "system"),
+            ("/sync", self.cmd_sync, "Синхронизировать", "system"),
+            ("/status", self.cmd_status, "Статус", "system"),
+            ("/health", self.cmd_health, "Здоровье", "system"),
+            ("/memory", self.cmd_memory, "Память", "system"),
+            ("/cpu", self.cmd_cpu, "CPU", "system"),
+            ("/info", self.cmd_info, "Информация", "system"),
+            ("/logs", self.cmd_logs, "Логи", "system"),
+            ("/errors", self.cmd_errors, "Ошибки", "system"),
+            ("/warnings", self.cmd_warnings, "Предупреждения", "system"),
+            ("/debug", self.cmd_debug, "Отладка", "system"),
+            ("/test", self.cmd_test, "Тест", "system"),
+            ("/benchmark", self.cmd_benchmark, "Тест производительности", "system"),
+            ("/config", self.cmd_config, "Конфигурация", "system"),
+            ("/env", self.cmd_env, "Переменные окружения", "system"),
+            ("/secret", self.cmd_secret, "Секреты", "system"),
             
-            if command == "помощь":
-                vk.messages_send(peer_id, 
-                    "🤬 КОМАНДЫ:\n\n"
-                    "!авто вкл - ЗАПУСТИТЬ АВТОСПАМ\n"
-                    "!авто выкл - ОСТАНОВИТЬ\n"
-                    "!спам вкл - ТО ЖЕ САМОЕ\n"
-                    "!спам выкл - ТО ЖЕ САМОЕ\n"
-                    "!цель [ID] - НАЗНАЧИТЬ ЖЕРТВУ\n"
-                    "!цель выкл - ОТМЕНИТЬ\n"
-                    "!интервал [сек] - СКОРОСТЬ\n"
-                    "!статус - СТАТУС\n"
-                    "!помощь - ЭТО")
-                return
-        
-        # --- АВТОСПАМ ВСЕГДА АКТИВЕН ---
-        await send_spam(peer_id)
-            
-    except Exception as e:
-        logger.error(f"Process error: {e}")
-
-async def main():
-    logger.info("🔥 CRUEL AUTOSPAM BOT START")
-    logger.info(f"Group: {GROUP_ID}")
-    logger.info(f"Insults: {len(INSULTS)}")
-    logger.info("⚡ AUTOSPAM IS ON BY DEFAULT!")
-    
-    try:
-        info = vk.groups_get_by_id()
-        if "error" in info:
-            logger.error(f"Token error: {info['error']}")
-            return
-        logger.info("Token OK")
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        return
-    
-    lp_info = vk.get_long_poll_server()
-    if "error" in lp_info:
-        logger.error(f"Long Poll error: {lp_info['error']}")
-        return
-    
-    server = lp_info.get("server")
-    key = lp_info.get("key")
-    ts = lp_info.get("ts")
-    
-    if not server:
-        logger.error("No server")
-        return
-    
-    if not server.startswith(('http://', 'https://')):
-        server = 'https://' + server
-    
-    logger.info("✅ CRUEL AUTOSPAM BOT READY")
-    logger.info("💀 БОТ УЖЕ ЕБАШИТ! ОСТАНОВИ КОМАНДОЙ !авто выкл")
-    
-    while True:
-        try:
-            response = vk.long_poll_request(server, key, ts)
-            
-            if "failed" in response:
-                if response["failed"] == 1:
-                    ts = response.get("ts", ts)
-                    continue
-                elif response["failed"] in [2, 3]:
-                    lp_info = vk.get_long_poll_server()
-                    if "error" not in lp_info:
-                        server = lp_info.get("server")
-                        key = lp_info.get("key")
-                        ts = lp_info.get("ts")
-                        if server and not server.startswith(('http://', 'https://')):
-                            server = 'https://' + server
-                    continue
-            
-            ts = response.get("ts", ts)
-            updates = response.get("updates", [])
-            
-            for update in updates:
-                try:
-                    if update.get("type") == "message_new":
-                        await process_message(update)
-                except Exception as e:
-                    logger.error(f"Update error: {e}")
-                    
-        except Exception as e:
-            logger.error(f"Loop error: {e}")
-            await asyncio.sleep(5)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            # Дополнительные (35 команд)
+            ("/alarm",
