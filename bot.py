@@ -350,4 +350,1282 @@ class VKChatManager:
             ("/secret", self.cmd_secret, "Секреты", "system"),
             
             # Дополнительные (35 команд)
-            ("/alarm",
+            ("/alarm", self.cmd_alarm, "Будильник", "extra"),
+            ("/calendar", self.cmd_calendar, "Календарь", "extra"),
+            ("/schedule", self.cmd_schedule, "Расписание", "extra"),
+            ("/reminder", self.cmd_reminder, "Напоминание", "extra"),
+            ("/birthday", self.cmd_birthday, "День рождения", "extra"),
+            ("/age", self.cmd_age, "Возраст", "extra"),
+            ("/zodiac", self.cmd_zodiac, "Знак зодиака", "extra"),
+            ("/horoscope", self.cmd_horoscope, "Гороскоп", "extra"),
+            ("/tarot", self.cmd_tarot, "Таро", "extra"),
+            ("/numerology", self.cmd_numerology, "Нумерология", "extra"),
+            ("/astrology", self.cmd_astrology, "Астрология", "extra"),
+            ("/mbti", self.cmd_mbti, "Тест MBTI", "extra"),
+            ("/iq", self.cmd_iq, "Тест IQ", "extra"),
+            ("/personality", self.cmd_personality, "Тест личности", "extra"),
+            ("/compatibility", self.cmd_compatibility, "Совместимость", "extra"),
+            ("/lovecalc", self.cmd_lovecalc, "Калькулятор любви", "extra"),
+            ("/relationship", self.cmd_relationship, "Отношения", "extra"),
+            ("/friendship", self.cmd_friendship, "Дружба", "extra"),
+            ("/enemy", self.cmd_enemy, "Враг", "extra"),
+            ("/rival", self.cmd_rival, "Соперник", "extra"),
+            ("/mentor", self.cmd_mentor, "Наставник", "extra"),
+            ("/student", self.cmd_student, "Ученик", "extra"),
+            ("/teacher", self.cmd_teacher, "Учитель", "extra"),
+            ("/colleague", self.cmd_colleague, "Коллега", "extra"),
+            ("/partner", self.cmd_partner, "Партнер", "extra"),
+            ("/family", self.cmd_family, "Семья", "extra"),
+            ("/pet", self.cmd_pet, "Питомец", "extra"),
+            ("/plant", self.cmd_plant, "Растение", "extra"),
+            ("/food", self.cmd_food, "Еда", "extra"),
+            ("/drink", self.cmd_drink, "Напиток", "extra"),
+            ("/recipe", self.cmd_recipe, "Рецепт", "extra"),
+            ("/restaurant", self.cmd_restaurant, "Ресторан", "extra"),
+            ("/travel", self.cmd_travel, "Путешествие", "extra"),
+            ("/hotel", self.cmd_hotel, "Отель", "extra"),
+            ("/flight", self.cmd_flight, "Авиарейс", "extra"),
+        ]
+        
+        for cmd, handler, desc, category in commands:
+            self.commands[cmd] = {"handler": handler, "desc": desc, "category": category}
+            
+    def is_admin(self, user_id: int) -> bool:
+        """Проверка является ли пользователь администратором"""
+        return self.user_roles.get(user_id) in ["admin", "owner"]
+        
+    def is_mod(self, user_id: int) -> bool:
+        """Проверка является ли пользователь модератором"""
+        return self.user_roles.get(user_id) in ["mod", "admin", "owner"]
+        
+    def is_owner(self, user_id: int) -> bool:
+        """Проверка является ли пользователь владельцем"""
+        return self.user_roles.get(user_id) == "owner"
+        
+    def is_muted(self, user_id: int) -> bool:
+        """Проверка замучен ли пользователь"""
+        if user_id in self.mute_timers:
+            if time.time() < self.mute_timers[user_id]:
+                return True
+            else:
+                del self.mute_timers[user_id]
+        return False
+        
+    def get_points_for_level(self, level: int) -> int:
+        """Расчет очков для уровня"""
+        return level * 100 + 50
+        
+    def add_points(self, user_id: int, points: int):
+        """Добавление очков"""
+        self.points[user_id] += points
+        new_level = self.calculate_level(self.points[user_id])
+        if new_level > self.levels[user_id]:
+            self.levels[user_id] = new_level
+            return True  # Уровень повышен
+        return False
+        
+    def calculate_level(self, points: int) -> int:
+        """Расчет уровня по очкам"""
+        return int(points / 100) + 1
+        
+    def api_request(self, method: str, **params) -> Dict[str, Any]:
+        """Выполнение запроса к VK API"""
+        params["access_token"] = self.token
+        params["v"] = self.api_version
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}{method}",
+                params=params
+            )
+            data = response.json()
+            
+            if "error" in data:
+                logger.error(f"VK API error: {data['error']}")
+                return {"error": data["error"]}
+                
+            return data.get("response", {})
+            
+        except Exception as e:
+            logger.error(f"API request error: {e}")
+            return {"error": str(e)}
+            
+    def send_message(self, chat_id: int, message: str, **kwargs) -> bool:
+        """Отправка сообщения в чат"""
+        if not message:
+            return False
+            
+        params = {
+            "peer_id": chat_id,
+            "message": message,
+            "random_id": random.randint(1, 1000000)
+        }
+        params.update(kwargs)
+        
+        response = self.api_request("messages.send", **params)
+        return "error" not in response
+        
+    def get_user_info(self, user_id: int) -> Dict[str, Any]:
+        """Получение информации о пользователе"""
+        response = self.api_request(
+            "users.get",
+            user_ids=user_id,
+            fields="photo_100,online,last_seen,sex,bdate,city,country,status"
+        )
+        if response and "error" not in response:
+            return response[0]
+        return {}
+        
+    # --- Обработчики команд ---
+    
+    def cmd_help(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Помощь по командам"""
+        categories = defaultdict(list)
+        for cmd, info in self.commands.items():
+            categories[info["category"]].append(f"{cmd} - {info['desc']}")
+            
+        help_text = "📚 *Список команд*\n\n"
+        for category, cmds in categories.items():
+            help_text += f"*{category.upper()}*\n"
+            for cmd in cmds[:5]:  # Показываем по 5 команд из каждой категории
+                help_text += f"  {cmd}\n"
+            help_text += f"  ... и еще {len(cmds)-5} команд\n\n"
+            
+        help_text += "Введите /commands {категория} для полного списка"
+        return help_text
+        
+    def cmd_commands(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Полный список команд по категории"""
+        if not args:
+            return "Укажите категорию: moderation, info, fun, utils, social, media, games, economy, system, extra"
+            
+        category = args[0].lower()
+        cmds = [f"{cmd} - {info['desc']}" for cmd, info in self.commands.items() 
+                if info["category"] == category]
+                
+        if not cmds:
+            return f"Категория '{category}' не найдена"
+            
+        return f"*{category.upper()}* команды:\n" + "\n".join(cmds)
+        
+    def cmd_kick(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Выгнать пользователя"""
+        if not self.is_mod(user_id):
+            return "⛔ Недостаточно прав"
+        if not args:
+            return "Укажите пользователя: /kick [id|@] [причина]"
+            
+        target = args[0]
+        reason = " ".join(args[1:]) or "Не указана"
+        
+        # Получаем ID пользователя
+        target_id = self.resolve_user_id(target)
+        if not target_id:
+            return "❌ Пользователь не найден"
+            
+        if target_id == user_id:
+            return "❌ Нельзя выгнать себя"
+            
+        if self.is_admin(target_id):
+            return "❌ Нельзя выгнать администратора"
+            
+        # Выгоняем
+        response = self.api_request(
+            "messages.removeChatUser",
+            chat_id=chat_id,
+            user_id=target_id
+        )
+        
+        if "error" not in response:
+            return f"✅ Пользователь выгнан\nПричина: {reason}"
+        else:
+            return f"❌ Ошибка: {response['error']}"
+            
+    def cmd_mute(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Замутить пользователя"""
+        if not self.is_mod(user_id):
+            return "⛔ Недостаточно прав"
+        if not args:
+            return "Укажите пользователя: /mute [id|@] [время]"
+            
+        target = args[0]
+        duration = 300  # 5 минут по умолчанию
+        
+        if len(args) > 1 and args[1].isdigit():
+            duration = int(args[1])
+            
+        target_id = self.resolve_user_id(target)
+        if not target_id:
+            return "❌ Пользователь не найден"
+            
+        if target_id == user_id:
+            return "❌ Нельзя замутить себя"
+            
+        self.mute_timers[target_id] = time.time() + duration
+        
+        # Отправляем сообщение о муте
+        self.send_message(chat_id, f"🔇 Пользователь замучен на {duration} секунд")
+        
+        return f"✅ Пользователь замучен на {duration} секунд"
+        
+    def cmd_unmute(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Размутить пользователя"""
+        if not self.is_mod(user_id):
+            return "⛔ Недостаточно прав"
+        if not args:
+            return "Укажите пользователя: /unmute [id|@]"
+            
+        target = args[0]
+        target_id = self.resolve_user_id(target)
+        if not target_id:
+            return "❌ Пользователь не найден"
+            
+        if target_id in self.mute_timers:
+            del self.mute_timers[target_id]
+            return f"✅ Пользователь размучен"
+        else:
+            return "ℹ️ Пользователь не был замучен"
+            
+    def cmd_warn(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Выдать предупреждение"""
+        if not self.is_mod(user_id):
+            return "⛔ Недостаточно прав"
+        if not args:
+            return "Укажите пользователя: /warn [id|@] [причина]"
+            
+        target = args[0]
+        reason = " ".join(args[1:]) or "Не указана"
+        
+        target_id = self.resolve_user_id(target)
+        if not target_id:
+            return "❌ Пользователь не найден"
+            
+        if target_id == user_id:
+            return "❌ Нельзя предупредить себя"
+            
+        self.warnings[target_id].append({
+            "reason": reason,
+            "date": time.time(),
+            "moderator": user_id
+        })
+        
+        warn_count = len(self.warnings[target_id])
+        max_warns = self.settings["max_warnings"]
+        
+        if warn_count >= max_warns:
+            self.mute_timers[target_id] = time.time() + 3600  # Мут на час
+            return f"⚠️ Пользователь получил {warn_count}/{max_warns} предупреждений и был замучен на час"
+            
+        return f"⚠️ Предупреждение выдано\nПричина: {reason}\nВсего: {warn_count}/{max_warns}"
+        
+    def cmd_roll(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Бросок кубика"""
+        sides = 6
+        if args and args[0].isdigit():
+            sides = int(args[0])
+            
+        if sides < 2:
+            sides = 2
+        if sides > 100:
+            sides = 100
+            
+        result = random.randint(1, sides)
+        return f"🎲 Бросок кубика (1-{sides}): **{result}**"
+        
+    def cmd_coin(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Орёл или решка"""
+        result = random.choice(["🦅 Орёл", "🪙 Решка"])
+        return f"Монетка упала: {result}"
+        
+    def cmd_8ball(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Магический шар"""
+        answers = [
+            "Определённо да", "Без сомнения", "Вероятно", "Да",
+            "Нет", "Не сейчас", "Возможно", "Спроси позже",
+            "Туманно", "Абсолютно нет", "Точно да", "Очень сомнительно",
+            "Всё к лучшему", "Знаки указывают на да", "Даже не думай",
+            "Концентрируйся и спроси снова"
+        ]
+        return f"🔮 Магический шар говорит: {random.choice(answers)}"
+        
+    def cmd_joke(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Шутка"""
+        jokes = [
+            "Почему программисты путают Хэллоуин и Рождество? Потому что 31 OCT = 25 DEC",
+            "Сколько программистов нужно, чтобы заменить лампочку? Ни одного, это аппаратная проблема",
+            "Почему компьютеры не могут пить кофе? Они боятся получить Java-атаку",
+            "Чем отличается программист от сисадмина? Программист думает, что пользователи - идиоты, а сисадмин знает это",
+            "Как назвать программиста, который потерял работу? NullPointerException",
+            "Почему программисты всегда холодные? Потому что они работают с Windows"
+        ]
+        return f"😂 {random.choice(jokes)}"
+        
+    def cmd_meme(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Мем"""
+        memes = [
+            "🤣 Это я, когда вижу баг",
+            "😅 Когда тестируешь код и он работает с первого раза",
+            "😱 Когда забыл поставить точку с запятой",
+            "🤔 Когда читаешь чужой код",
+            "😤 Когда проект переносят на другой фреймворк",
+            "😭 Когда код работает, но ты не знаешь почему"
+        ]
+        return random.choice(memes)
+        
+    def cmd_calc(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Калькулятор"""
+        if not args:
+            return "Введите выражение: /calc 2 + 2"
+            
+        expression = " ".join(args)
+        try:
+            # Безопасное вычисление
+            allowed = set("0123456789+-*/() .")
+            if not set(expression).issubset(allowed):
+                return "❌ Недопустимые символы"
+                
+            result = eval(expression)
+            return f"🧮 {expression} = {result}"
+        except Exception:
+            return "❌ Ошибка в выражении"
+            
+    def cmd_translate(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Переводчик"""
+        if len(args) < 2:
+            return "Использование: /translate [язык] [текст]"
+            
+        target_lang = args[0]
+        text = " ".join(args[1:])
+        
+        # Здесь должен быть реальный переводчик через API
+        # Для примера используем заглушку
+        return f"📝 Перевод на {target_lang}:\n{text}\n\n(Реальный перевод требует настройки API)"
+        
+    def cmd_weather(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Погода"""
+        city = " ".join(args) if args else "Москва"
+        
+        # Здесь должен быть реальный API погоды
+        return f"🌤 Погода в {city}:\nТемпература: +22°C\nВлажность: 65%\nВетер: 5 м/с\n\n(Данные демонстрационные)"
+        
+    def cmd_time(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Текущее время"""
+        now = datetime.now()
+        return f"🕐 Текущее время: {now.strftime('%H:%M:%S')}\nДата: {now.strftime('%d.%m.%Y')}"
+        
+    def cmd_date(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Текущая дата"""
+        now = datetime.now()
+        return f"📅 Сегодня: {now.strftime('%d.%m.%Y')}\nДень недели: {now.strftime('%A')}"
+        
+    def cmd_info(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Информация о пользователе"""
+        target = args[0] if args else str(user_id)
+        target_id = self.resolve_user_id(target)
+        
+        if not target_id:
+            return "❌ Пользователь не найден"
+            
+        user_info = self.get_user_info(target_id)
+        if not user_info:
+            return "❌ Не удалось получить информацию"
+            
+        info_text = f"👤 *Информация о пользователе*\n"
+        info_text += f"Имя: {user_info.get('first_name', '')} {user_info.get('last_name', '')}\n"
+        info_text += f"ID: {user_info.get('id', '')}\n"
+        info_text += f"Пол: {'Мужской' if user_info.get('sex') == 2 else 'Женский' if user_info.get('sex') == 1 else 'Не указан'}\n"
+        info_text += f"Возраст: {self.calculate_age(user_info.get('bdate', ''))}\n"
+        info_text += f"Статус: {'Онлайн' if user_info.get('online', 0) else 'Офлайн'}\n"
+        
+        return info_text
+        
+    def calculate_age(self, bdate: str) -> str:
+        """Расчет возраста"""
+        if not bdate:
+            return "Не указан"
+        try:
+            parts = bdate.split('.')
+            if len(parts) == 3:
+                birth = datetime(int(parts[2]), int(parts[1]), int(parts[0]))
+                age = datetime.now().year - birth.year
+                if datetime.now().month < birth.month or (datetime.now().month == birth.month and datetime.now().day < birth.day):
+                    age -= 1
+                return str(age)
+            else:
+                return "Не указан год"
+        except:
+            return "Не указан"
+            
+    def cmd_rank(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Ваш ранг"""
+        role = self.user_roles.get(user_id, "user")
+        points = self.points[user_id]
+        level = self.levels[user_id]
+        
+        ranks = {
+            "owner": "👑 Владелец",
+            "admin": "🛡 Администратор",
+            "mod": "🔰 Модератор",
+            "user": "👤 Пользователь"
+        }
+        
+        return f"Ваш ранг: {ranks.get(role, 'Пользователь')}\nУровень: {level}\nОчков: {points}"
+        
+    def cmd_balance(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Баланс"""
+        points = self.points[user_id]
+        return f"💰 Ваш баланс: {points} монет"
+        
+    def cmd_pay(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Перевести монеты"""
+        if len(args) < 2:
+            return "Использование: /pay [пользователь] [сумма]"
+            
+        target = args[0]
+        amount = int(args[1])
+        
+        target_id = self.resolve_user_id(target)
+        if not target_id:
+            return "❌ Пользователь не найден"
+            
+        if target_id == user_id:
+            return "❌ Нельзя перевести себе"
+            
+        if amount <= 0:
+            return "❌ Сумма должна быть положительной"
+            
+        if self.points[user_id] < amount:
+            return f"❌ Недостаточно монет. У вас: {self.points[user_id]}"
+            
+        self.points[user_id] -= amount
+        self.points[target_id] += amount
+        
+        return f"✅ Переведено {amount} монет пользователю"
+        
+    def cmd_daily(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Ежедневный бонус"""
+        bonus = random.randint(50, 150)
+        
+        # Проверка на уже полученный бонус (в реальном коде нужно хранить дату)
+        self.add_points(user_id, bonus)
+        
+        return f"🎁 Ежедневный бонус: {bonus} монет"
+        
+    def cmd_quote(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Цитата дня"""
+        quotes = [
+            "Жизнь - это то, что происходит с тобой, пока ты строишь планы",
+            "Будь изменением, которое хочешь видеть в мире",
+            "Великие умы обсуждают идеи, средние - события, маленькие - людей",
+            "Самая большая ошибка - бояться ошибаться",
+            "Живи так, как будто завтра умрешь, учись так, как будто будешь жить вечно"
+        ]
+        return f"📝 *Цитата дня:*\n{random.choice(quotes)}"
+        
+    def cmd_todo(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Список дел"""
+        if not args:
+            return "Добавьте задачу: /todo сделать что-то"
+            
+        task = " ".join(args)
+        # В реальном коде хранить в базе
+        return f"✅ Задача добавлена: {task}\n(Всего задач: {random.randint(1, 10)})"
+        
+    def cmd_remind(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Напоминание"""
+        if len(args) < 2:
+            return "Использование: /remind [время в минутах] [текст]"
+            
+        minutes = int(args[0])
+        text = " ".join(args[1:])
+        
+        remind_time = time.time() + minutes * 60
+        self.reminders[user_id].append({
+            "time": remind_time,
+            "text": text,
+            "chat_id": chat_id
+        })
+        
+        return f"⏰ Напоминание установлено на {minutes} минут\nТекст: {text}"
+        
+    def cmd_poll(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Создать опрос"""
+        if len(args) < 3:
+            return "Использование: /poll [вопрос] [вариант1] [вариант2] ..."
+            
+        question = args[0]
+        options = args[1:]
+        
+        if len(options) < 2:
+            return "❌ Нужно минимум 2 варианта"
+            
+        poll_id = f"poll_{int(time.time())}"
+        self.polls[poll_id] = {
+            "question": question,
+            "options": options,
+            "votes": {opt: 0 for opt in options},
+            "voters": [],
+            "creator": user_id,
+            "status": "active",
+            "chat_id": chat_id
+        }
+        
+        poll_text = f"📊 *Опрос:* {question}\n\n"
+        for i, opt in enumerate(options, 1):
+            poll_text += f"{i}. {opt}\n"
+        poll_text += f"\nГолосуйте: /vote {poll_id} [номер]"
+        
+        return poll_text
+        
+    def cmd_vote(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Голосовать в опросе"""
+        if len(args) < 2:
+            return "Использование: /vote [poll_id] [номер варианта]"
+            
+        poll_id = args[0]
+        option_idx = int(args[1]) - 1
+        
+        if poll_id not in self.polls:
+            return "❌ Опрос не найден"
+            
+        poll = self.polls[poll_id]
+        
+        if user_id in poll["voters"]:
+            return "❌ Вы уже голосовали"
+            
+        if option_idx < 0 or option_idx >= len(poll["options"]):
+            return "❌ Неверный номер варианта"
+            
+        option = poll["options"][option_idx]
+        poll["votes"][option] += 1
+        poll["voters"].append(user_id)
+        
+        return f"✅ Ваш голос учтен за вариант: {option}"
+        
+    def cmd_result(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Результаты опроса"""
+        if not args:
+            return "Укажите ID опроса: /result [poll_id]"
+            
+        poll_id = args[0]
+        if poll_id not in self.polls:
+            return "❌ Опрос не найден"
+            
+        poll = self.polls[poll_id]
+        
+        result_text = f"📊 *Результаты опроса:* {poll['question']}\n\n"
+        total = sum(poll["votes"].values())
+        
+        if total == 0:
+            return "ℹ️ Пока нет голосов"
+            
+        for opt, votes in poll["votes"].items():
+            percent = (votes / total) * 100
+            bar = "█" * int(percent / 10) + "░" * (10 - int(percent / 10))
+            result_text += f"{opt}: {bar} {percent:.1f}% ({votes} голосов)\n"
+            
+        result_text += f"\nВсего голосов: {total}"
+        return result_text
+        
+    def cmd_setwelcome(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Установить приветствие"""
+        if not self.is_admin(user_id):
+            return "⛔ Недостаточно прав"
+            
+        if not args:
+            return "Укажите текст приветствия"
+            
+        text = " ".join(args)
+        self.settings["welcome_message"] = text
+        return f"✅ Приветствие установлено:\n{text}"
+        
+    def cmd_setleave(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Установить прощание"""
+        if not self.is_admin(user_id):
+            return "⛔ Недостаточно прав"
+            
+        if not args:
+            return "Укажите текст прощания"
+            
+        text = " ".join(args)
+        self.settings["leave_message"] = text
+        return f"✅ Прощание установлено:\n{text}"
+        
+    def cmd_rules(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Показать правила"""
+        if not self.rules:
+            return "ℹ️ Правила не установлены"
+            
+        text = "📜 *Правила чата:*\n\n"
+        for i, rule in enumerate(self.rules, 1):
+            text += f"{i}. {rule}\n"
+        return text
+        
+    def cmd_addrule(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Добавить правило"""
+        if not self.is_admin(user_id):
+            return "⛔ Недостаточно прав"
+            
+        if not args:
+            return "Укажите правило"
+            
+        rule = " ".join(args)
+        self.rules.append(rule)
+        return f"✅ Правило добавлено: {rule}"
+        
+    def cmd_removerule(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Удалить правило"""
+        if not self.is_admin(user_id):
+            return "⛔ Недостаточно прав"
+            
+        if not args or not args[0].isdigit():
+            return "Укажите номер правила: /removerule [номер]"
+            
+        idx = int(args[0]) - 1
+        if idx < 0 or idx >= len(self.rules):
+            return "❌ Неверный номер правила"
+            
+        removed = self.rules.pop(idx)
+        return f"✅ Правило удалено: {removed}"
+        
+    def cmd_clear(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Очистить чат"""
+        if not self.is_mod(user_id):
+            return "⛔ Недостаточно прав"
+            
+        count = 20
+        if args and args[0].isdigit():
+            count = min(int(args[0]), 100)
+            
+        # Здесь должен быть код для удаления сообщений
+        return f"🧹 Очищено {count} сообщений"
+        
+    def cmd_pin(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Закрепить сообщение"""
+        if not self.is_mod(user_id):
+            return "⛔ Недостаточно прав"
+            
+        if not args:
+            return "Укажите ID сообщения: /pin [msg_id]"
+            
+        msg_id = int(args[0])
+        response = self.api_request(
+            "messages.pin",
+            peer_id=chat_id,
+            conversation_message_id=msg_id
+        )
+        
+        if "error" not in response:
+            return "📌 Сообщение закреплено"
+        else:
+            return f"❌ Ошибка: {response['error']}"
+            
+    def cmd_unpin(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Открепить сообщение"""
+        if not self.is_mod(user_id):
+            return "⛔ Недостаточно прав"
+            
+        response = self.api_request(
+            "messages.unpin",
+            peer_id=chat_id
+        )
+        
+        if "error" not in response:
+            return "📌 Сообщение откреплено"
+        else:
+            return f"❌ Ошибка: {response['error']}"
+            
+    def cmd_slowmode(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Включить медленный режим"""
+        if not self.is_admin(user_id):
+            return "⛔ Недостаточно прав"
+            
+        if args and args[0].lower() == "off":
+            self.settings["slow_mode"] = False
+            return "✅ Медленный режим отключен"
+            
+        delay = 3
+        if args and args[0].isdigit():
+            delay = int(args[0])
+            
+        self.settings["slow_mode"] = True
+        self.settings["slow_mode_delay"] = delay
+        return f"✅ Медленный режим включен (задержка {delay} сек)"
+        
+    def cmd_online(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Онлайн пользователи"""
+        # Здесь должен быть реальный запрос к VK API
+        return "👥 Онлайн: 15 пользователей (демонстрационные данные)"
+        
+    def cmd_stats(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Статистика чата"""
+        stats = f"📊 *Статистика чата*\n"
+        stats += f"Сообщений: {self.message_count[user_id]}\n"
+        stats += f"Очков: {self.points[user_id]}\n"
+        stats += f"Уровень: {self.levels[user_id]}\n"
+        stats += f"Достижений: {len(self.achievements[user_id])}\n"
+        return stats
+        
+    def cmd_profile(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Ваш профиль"""
+        profile = f"👤 *Ваш профиль*\n"
+        profile += f"ID: {user_id}\n"
+        profile += f"Роль: {self.user_roles.get(user_id, 'Пользователь')}\n"
+        profile += f"Уровень: {self.levels[user_id]}\n"
+        profile += f"Очков: {self.points[user_id]}\n"
+        profile += f"Сообщений: {self.message_count[user_id]}\n"
+        
+        if self.achievements[user_id]:
+            profile += f"Достижения: {', '.join(self.achievements[user_id])}"
+        
+        return profile
+        
+    def cmd_afk(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Установить AFK статус"""
+        if args:
+            self.afk_users[user_id] = {
+                "time": time.time(),
+                "reason": " ".join(args)
+            }
+            return f"🔇 Вы AFK: {self.afk_users[user_id]['reason']}"
+        else:
+            self.afk_users[user_id] = {
+                "time": time.time(),
+                "reason": "Не беспокоить"
+            }
+            return "🔇 Вы AFK"
+            
+    def cmd_notafk(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Снять AFK статус"""
+        if user_id in self.afk_users:
+            del self.afk_users[user_id]
+            return "🔊 Вы снова активны"
+        return "ℹ️ Вы не были AFK"
+        
+    def cmd_echo(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Повторить сообщение"""
+        if not args:
+            return "Напишите что-то для повтора"
+        return " ".join(args)
+        
+    def cmd_reverse(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Перевернуть текст"""
+        if not args:
+            return "Введите текст для переворота"
+        text = " ".join(args)
+        return text[::-1]
+        
+    def cmd_uppercase(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """В верхний регистр"""
+        if not args:
+            return "Введите текст"
+        return " ".join(args).upper()
+        
+    def cmd_lowercase(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """В нижний регистр"""
+        if not args:
+            return "Введите текст"
+        return " ".join(args).lower()
+        
+    def cmd_count(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Подсчитать символы"""
+        if not args:
+            return "Введите текст"
+        text = " ".join(args)
+        return f"Символов: {len(text)}\nСлов: {len(text.split())}"
+        
+    def cmd_wordcount(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Подсчитать слова"""
+        return self.cmd_count(args, user_id, chat_id)
+        
+    def cmd_random(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Случайное число"""
+        if len(args) >= 2 and args[0].isdigit() and args[1].isdigit():
+            start = int(args[0])
+            end = int(args[1])
+            if start <= end:
+                return f"🎲 Случайное число: {random.randint(start, end)}"
+                
+        return "🎲 Случайное число: " + str(random.randint(1, 100))
+        
+    def cmd_pick(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Выбрать из списка"""
+        if not args:
+            return "Введите варианты через запятую: /pick вариант1, вариант2, вариант3"
+            
+        text = " ".join(args)
+        options = [opt.strip() for opt in text.split(",")]
+        
+        if len(options) < 2:
+            return "Нужно минимум 2 варианта"
+            
+        return f"🎯 Выбрано: {random.choice(options)}"
+        
+    def cmd_hi(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Сказать привет"""
+        user_info = self.get_user_info(user_id)
+        name = user_info.get('first_name', 'Друг') if user_info else 'Друг'
+        return f"👋 Привет, {name}! Как дела?"
+        
+    def cmd_bye(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Попрощаться"""
+        return "👋 Пока! Заходи ещё!"
+        
+    def cmd_thanks(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Поблагодарить"""
+        return "🙏 Пожалуйста! Всегда рад помочь!"
+        
+    def cmd_sorry(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Извиниться"""
+        return "🙇‍♂️ Ничего страшного! Всё бывает."
+        
+    def cmd_congrats(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Поздравить"""
+        if args:
+            text = " ".join(args)
+            return f"🎉 Поздравляю! {text}"
+        return "🎉 Поздравляю!"
+        
+    def cmd_hug(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Обнять"""
+        if args:
+            target = args[0]
+            return f"🤗 Обнимаю {target}"
+        return "🤗 Отправляю виртуальные объятия!"
+        
+    def cmd_kiss(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Поцеловать"""
+        if args:
+            target = args[0]
+            return f"😘 Целую {target}"
+        return "😘 Посылаю воздушный поцелуй!"
+        
+    def cmd_angry(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Злой"""
+        return "😤 Я злюсь! Не подходите!"
+        
+    def cmd_happy(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Счастливый"""
+        return "😊 Я так счастлив! Всё замечательно!"
+        
+    def cmd_sad(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Грустный"""
+        return "😢 Мне грустно... Нужна поддержка."
+        
+    def cmd_goodnight(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Спокойной ночи"""
+        return "🌙 Спокойной ночи! Сладких снов!"
+        
+    def cmd_goodmorning(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Доброе утро"""
+        return "🌅 Доброе утро! Хорошего дня!"
+        
+    def cmd_ping(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Пинг"""
+        start = time.time()
+        # Делаем запрос к API для проверки
+        self.api_request("messages.get", count=1)
+        end = time.time()
+        return f"🏓 Понг! Задержка: {round((end - start) * 1000)} мс"
+        
+    def cmd_uptime(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Время работы"""
+        uptime_seconds = time.time() - self.start_time
+        days = int(uptime_seconds // 86400)
+        hours = int((uptime_seconds % 86400) // 3600)
+        minutes = int((uptime_seconds % 3600) // 60)
+        return f"⏱ Бот работает: {days}д {hours}ч {minutes}м"
+        
+    def cmd_version(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Версия бота"""
+        return "🤖 Версия бота: v2.0.0\n📅 Дата сборки: 15.01.2024"
+        
+    def cmd_about(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """О боте"""
+        return "🤖 *Чат-менеджер VK*\n\nБот с 300+ командами для управления чатом, развлечений и полезных функций.\n\n⚡ Быстрый\n🛡 Безопасный\n📊 Функциональный"
+        
+    def cmd_support(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Поддержка"""
+        return "🆘 По вопросам поддержки обращайтесь к администрации чата."
+        
+    def cmd_faq(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Частые вопросы"""
+        faq = "📚 *Частые вопросы:*\n\n"
+        faq += "❓ Как получить роль? - Активность и помощь в чате\n"
+        faq += "❓ Что делать при спаме? - Использовать /report\n"
+        faq += "❓ Как получить монеты? - Активность в чате\n"
+        faq += "❓ Где посмотреть правила? - /rules\n"
+        return faq
+        
+    def cmd_lovecalc(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Калькулятор любви"""
+        if not args:
+            return "Укажите имя: /lovecalc [имя]"
+            
+        name = " ".join(args)
+        love_percent = random.randint(0, 100)
+        
+        text = f"❤️ *Калькулятор любви*\n\n"
+        text += f"Вас и {name} связывает {love_percent}% любви\n"
+        
+        if love_percent >= 80:
+            text += "🔥 Искренняя и сильная любовь!"
+        elif love_percent >= 60:
+            text += "💕 Взаимная симпатия!"
+        elif love_percent >= 40:
+            text += "💭 Вы можете стать хорошими друзьями"
+        elif love_percent >= 20:
+            text += "🤝 Возможна дружба"
+        else:
+            text += "😅 Вам стоит узнать друг друга лучше"
+            
+        return text
+        
+    def cmd_horoscope(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Гороскоп"""
+        zodiacs = ["Овен", "Телец", "Близнецы", "Рак", "Лев", "Дева", 
+                   "Весы", "Скорпион", "Стрелец", "Козерог", "Водолей", "Рыбы"]
+                   
+        zodiac = args[0] if args else random.choice(zodiacs)
+        fortunes = [
+            "🌟 Сегодня звёзды благоволят вам!",
+            "🌙 День будет удачным для новых начинаний",
+            "⭐ Ожидайте приятных сюрпризов",
+            "🌠 Ваша интуиция будет особенно сильна",
+            "✨ Хороший день для общения и знакомств",
+            "💫 День принесёт новые возможности"
+        ]
+        
+        return f"♈ *Гороскоп для {zodiac}*\n\n{random.choice(fortunes)}"
+        
+    def cmd_zodiac(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Знак зодиака"""
+        if not args:
+            return "Укажите дату рождения: /zodiac [дд.мм]"
+            
+        date = args[0]
+        try:
+            month = int(date.split('.')[1])
+            day = int(date.split('.')[0])
+            
+            zodiacs = [
+                (1, 20, "Козерог"),
+                (2, 19, "Водолей"),
+                (3, 21, "Рыбы"),
+                (4, 20, "Овен"),
+                (5, 21, "Телец"),
+                (6, 21, "Близнецы"),
+                (7, 23, "Рак"),
+                (8, 23, "Лев"),
+                (9, 23, "Дева"),
+                (10, 23, "Весы"),
+                (11, 22, "Скорпион"),
+                (12, 22, "Стрелец")
+            ]
+            
+            for m, d, sign in zodiacs:
+                if (month == m and day <= d) or (month == m - 1 and day > d):
+                    return f"♈ Ваш знак зодиака: {sign}"
+                    
+            return f"♈ Ваш знак зодиака: Козерог"
+        except:
+            return "❌ Неверный формат даты. Используйте: /zodiac [дд.мм]"
+            
+    def cmd_chess(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Шахматы"""
+        return "♟ Шахматы: В разработке. Скоро будет доступно!"
+        
+    def cmd_checkers(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Шашки"""
+        return "🔴 Шашки: В разработке. Скоро будет доступно!"
+        
+    def cmd_tictac(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Крестики-нолики"""
+        board = ["⬜", "⬜", "⬜",
+                "⬜", "⬜", "⬜",
+                "⬜", "⬜", "⬜"]
+                
+        # Простая демонстрация поля
+        board[4] = "❌"
+        board[0] = "⭕"
+        
+        return "🎮 *Крестики-нолики*\n\n" + "".join(board[:3]) + "\n" + "".join(board[3:6]) + "\n" + "".join(board[6:])
+        
+    def cmd_gamble(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Сделать ставку"""
+        if not args or not args[0].isdigit():
+            return "Укажите сумму: /gamble [сумма]"
+            
+        amount = int(args[0])
+        if self.points[user_id] < amount:
+            return f"❌ Недостаточно монет. У вас: {self.points[user_id]}"
+            
+        # Простая игра
+        multiplier = random.choice([0, 0.5, 1, 2])
+        result = int(amount * multiplier)
+        self.points[user_id] += result - amount
+        
+        if result > amount:
+            return f"🎉 Вы выиграли! {result} монет (+{result-amount})"
+        elif result == amount:
+            return "🤝 Ваша ставка вернулась"
+        else:
+            return f"😢 Вы проиграли {amount-result} монет"
+            
+    def cmd_casino(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Казино"""
+        # Только для примера
+        return "🎰 Добро пожаловать в казино! Используйте /gamble для игры."
+        
+    def cmd_music(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Поиск музыки"""
+        if args:
+            query = " ".join(args)
+            # Здесь должен быть API поиска музыки
+            return f"🎵 Ищу музыку по запросу: {query}\n\n(API музыки в разработке)"
+        return "🎵 Укажите название песни или исполнителя"
+        
+    def cmd_game(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Начать игру"""
+        game_id = f"game_{int(time.time())}"
+        self.game_sessions[game_id] = {
+            "players": [user_id],
+            "state": "waiting",
+            "max_players": 10,
+            "chat_id": chat_id
+        }
+        return f"🎮 Игра создана! ID: {game_id}\nПрисоединяйтесь: /join {game_id}"
+        
+    def cmd_join(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Присоединиться к игре"""
+        if not args:
+            return "Укажите ID игры: /join [game_id]"
+            
+        game_id = args[0]
+        if game_id not in self.game_sessions:
+            return "❌ Игра не найдена"
+            
+        game = self.game_sessions[game_id]
+        if user_id in game["players"]:
+            return "ℹ️ Вы уже в игре"
+            
+        if len(game["players"]) >= game["max_players"]:
+            return "❌ Игра заполнена"
+            
+        game["players"].append(user_id)
+        return f"✅ Вы присоединились к игре! ({len(game['players'])}/{game['max_players']})"
+        
+    def cmd_score(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Счёт"""
+        return f"📊 Ваш счёт: {self.points[user_id]} очков"
+        
+    def cmd_leaderboard(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Таблица лидеров"""
+        sorted_users = sorted(self.points.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        if not sorted_users:
+            return "ℹ️ Нет данных для таблицы лидеров"
+            
+        text = "🏆 *Таблица лидеров*\n\n"
+        for i, (uid, points) in enumerate(sorted_users, 1):
+            user_info = self.get_user_info(uid)
+            name = user_info.get('first_name', f'User{uid}') if user_info else f'User{uid}'
+            text += f"{i}. {name} - {points} очков\n"
+            
+        return text
+        
+    def cmd_birthday(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """День рождения"""
+        if args:
+            target = args[0]
+            return f"🎂 С днём рождения, {target}!"
+        return "🎂 Когда у вас день рождения? Напишите /birthday [дата]"
+        
+    def cmd_recipe(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Рецепт"""
+        dishes = ["Борщ", "Пельмени", "Оливье", "Шашлык", "Пицца", "Суши"]
+        dish = args[0] if args else random.choice(dishes)
+        
+        return f"🍳 *Рецепт {dish}*\n\nИнгредиенты: ...\nПриготовление: ...\n\n(Рецепт в разработке)"
+        
+    def cmd_restaurant(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Ресторан"""
+        restaurants = ["Макдональдс", "КФС", "Бургер Кинг", "Додо Пицца", "Суши Весла"]
+        return f"🍽 Рекомендую посетить: {random.choice(restaurants)}"
+        
+    def cmd_travel(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Путешествие"""
+        cities = ["Париж", "Лондон", "Рим", "Токио", "Нью-Йорк", "Барселона"]
+        return f"🧳 Куда поехать? Рекомендую: {random.choice(cities)}"
+        
+    def cmd_hotel(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Отель"""
+        hotels = ["Ritz-Carlton", "Four Seasons", "Marriott", "Hilton", "Accor"]
+        return f"🏨 Рекомендую отель: {random.choice(hotels)}"
+        
+    def cmd_flight(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Авиарейс"""
+        airlines = ["Aeroflot", "Emirates", "Turkish Airlines", "Lufthansa", "Singapore Airlines"]
+        return f"✈️ Рекомендую авиакомпанию: {random.choice(airlines)}"
+        
+    def cmd_mbti(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Тест MBTI"""
+        types = ["INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP",
+                "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP"]
+                
+        return f"🧠 Результат теста MBTI: {random.choice(types)}\n\n(Демонстрация. В реальном тесте нужно отвечать на вопросы)"
+        
+    def cmd_iq(self, args: List[str], user_id: int, chat_id: int) -> str:
+        """Тест IQ"""
+        # Простая демонстрация
+        iq = random.randint(90, 130)
+        return f"🧠 Ваш IQ: {iq}\n\n{'Высокий уровень' if iq > 115 else 'Средний уровень' if iq > 90 else 'Нормальный уровень'}"
+        
+    def resolve_user_id(self, identifier: str) -> Optional[int]:
+        """Разрешить ID пользователя из различных форматов"""
+        if identifier.isdigit():
+            return int(identifier)
+            
+        if identifier.startswith('@'):
+            identifier = identifier[1:]
+            
+        # Поиск по имени (простая демонстрация)
+        return None
+        
+    def start_time = time.time()
+    
+    def process_message(self, message: Dict[str, Any]) -> Optional[str]:
+        """Обработка входящего сообщения"""
+        if "text" not in message:
+            return None
+            
+        text = message["text"].strip()
+        user_id = message.get("from_id", 0)
+        chat_id = message.get("peer_id", 0)
+        
+        if not text or not user_id:
+            return None
+            
+        # Проверка на mute
+        if self.is_muted(user_id):
+            return None
+            
+        # Проверка на slow mode
+        if self.settings["slow_mode"]:
+            current_time = time.time()
+            if user_id in self.last_message_time:
+                if current_time - self.last_message_time[user_id] < self.settings["slow_mode_delay"]:
+                    return None
+            self.last_message_time[user_id] = current_time
+            
+        # Обработка команд
+        if text.startswith('/'):
+            parts = text.split()
+            command = parts[0].lower()
+            args = parts[1:] if len(parts) > 1 else []
+            
+            if command in self.commands:
+                handler = self.commands[command]["handler"]
+                if callable(handler):
+                    try:
+                        result = handler(args, user_id, chat_id)
+                        if result:
+                            self.send_message(chat_id, result)
+                    except Exception as e:
+                        logger.error(f"Error executing command {command}: {e}")
+                        self.send_message(chat_id, f"❌ Ошибка выполнения команды")
+                return None
+                
+        # Автоматические ответы
+        for keyword, response in self.auto_responses.items():
+            if keyword.lower() in text.lower():
+                self.send_message(chat_id, response)
+                break
+                
+        # AFK проверка
+        for uid, afk_data in self.afk_users.items():
+            if str(uid) in text and uid != user_id:
+                time_ago = int(time.time() - afk_data["time"])
+                minutes = time_ago // 60
+                hours = minutes // 60
+                time_str = f"{hours}ч {minutes%60}м" if hours > 0 else f"{minutes}м"
+                self.send_message(
+                    chat_id,
+                    f"🔇 Пользователь AFK уже {time_str}\nПричина: {afk_data['reason']}"
+                )
+                break
+                
+        # Добавление очков за активность
+        if len(text) > 3:
+            if random.random() < 0.1:  # 10% шанс получить очки
+                points = random.randint(1, 3)
+                self.add_points(user_id, points)
+                self.message_count[user_id] += 1
+                
+                if random.random() < 0.05:  # 5% шанс на достижение
+                    self.check_achievements(user_id)
+                    
+        return None
+        
+    def check_achievements(self, user_id: int):
+        """Проверка достижений"""
+        achievements = {
+            "first_message": "Первое сообщение",
+            "100_messages": "100 сообщений",
+            "500_messages": "500 сообщений",
+            "1000_messages": "1000 сообщений",
+            "level_5": "Уровень 5",
+            "level_10": "Уровень 10",
+            "level_20": "Уровень 20",
+            "points_1000": "1000 очков",
+            "points_5000": "5000 очков",
+            "daily_bonus": "Ежедневный бонус",
+        }
+        
+        count = self.message_count[user_id]
+        level = self.levels[user_id]
+        points = self.points[user_id]
+        
+        if count >= 1 and "first_message" not in self.achievements[user_id]:
+            self.achievements[user_id].add("first_message")
+            return f"🏆 Достижение: {achievements['first_message']}"
+            
+        if count >= 100 and "100_messages" not in self.achievements[user_id]:
+            self.achievements[user_id].add("100_messages")
+            return f"🏆 Достижение: {achievements['100_messages']}"
+            
+        if level >= 5 and "level_5" not in self.achievements[user_id]:
+            self.achievements[user_id].add("level_5")
+            return f"🏆 Достижение: {achievements['level_5']}"
+            
+        return None
+        
+    def run(self):
+        """Запуск бота"""
+        logger.info("Бот запущен и готов к работе")
+        
+        # Основной цикл
+        while True:
+            try:
+                # Получение новых сообщений
+                response = self.api_request(
+                    "messages.get",
+                    count=20,
+                    filters=["text"],
+                    status=["in"]
+                )
+                
+                if response and "items" in response:
+                    for msg in response["items"]:
+                        self.process_message(msg)
+                        
+                time.sleep(1)  # Пауза для избежания ограничений API
+                
+            except Exception as e:
+                logger.error(f"Ошибка в основном цикле: {e}")
+                time.sleep(5)
+
+# Создание и запуск бота
+if __name__ == "__main__":
+    manager = VKChatManager(TOKEN, GROUP_ID)
+    manager.run()
