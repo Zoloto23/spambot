@@ -5,7 +5,6 @@ import json
 import time
 import random
 import requests
-from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
 logging.basicConfig(
@@ -30,132 +29,15 @@ API_VERSION = "5.131"
 PREFIX = "!"
 
 INSULTS = [
-    "сука",
-    "блядь",
-    "хуй",
-    "пизда",
-    "залупа",
-    "мудила",
-    "гандон",
-    "пидор",
-    "лох",
-    "дебил",
-    "идиот",
-    "кретин",
-    "олень",
-    "баран",
-    "козел",
-    "свинья",
-    "петух",
-    "шлюха",
-    "блядина",
-    "проститутка",
-    "тварь",
-    "урод",
-    "выродок",
-    "мразь",
-    "гад",
-    "змей",
-    "крыса",
-    "ебать",
-    "ебаный",
-    "ебанутый",
-    "ебланище",
-    "еблан",
-    "ебальник",
-    "ебашишь",
-    "заебать",
-    "доебаться",
-    "выебать",
-    "наебать",
-    "объебать",
-    "хуярить",
-    "нахуй",
-    "похуй",
-    "дохуя",
-    "нехуй",
-    "охуеть",
-    "охуенный",
-    "пиздеть",
-    "пиздец",
-    "пиздюк",
-    "пиздатый",
-    "я твою мать вертел",
-    "я твою мать ебал",
-    "пошёл нахуй",
-    "иди нахуй",
-    "нахуй иди",
-    "в пизду",
-    "в жопу",
-    "ебанный в рот",
-    "ёбаный в рот",
-    "ебать твою мать",
-    "мат твою мать",
-    "бля буду",
-    "твою мать",
-    "ебать копать",
-    "заебало",
-    "доебали",
-    "поебать",
-    "распиздяй",
-    "разъебай",
-    "иди ты в жопу",
-    "заткнись еблан",
-    "ты чё дурак",
-    "ты тупой",
-    "у тебя мозгов нет",
-    "ты вообще тупой",
-    "ёбаный насос",
-    "блядский рот",
-    "хуй тебе в рот",
-    "пиздобол",
-    "мудила пизда",
-    "лох педальный",
-    "идиот полный",
-    "дебил конченый",
-    "петух гнилой",
-    "козел драный",
-    "свинья поганая",
-    "шлюха драная",
-    "блядина старая",
-    "урод конченый",
-    "мразь вонючая",
-    "ебло",
-    "рожа",
-    "морда",
-    "хрюкало",
-    "бивни",
-    "копыта",
-    "свиное рыло",
-    "баранья голова",
-    "оленья хари"
-]
-
-PREFIXES = [
-    "эй",
-    "слушай",
-    "ты",
-    "а ну",
-    "ну и",
-    "вот ты",
-    "да ты",
-    "а ты",
-    "ну ты",
-    "а ну-ка"
-]
-
-SUFFIXES = [
-    "!",
-    "!!!",
-    "??",
-    "?!",
-    "...",
-    "))))",
-    "))",
-    "хаха",
-    "ахаха",
-    "ахахаха",
-    "бля"
+    "сука", "блядь", "хуй", "пизда", "мудила", "гандон",
+    "пидор", "лох", "дебил", "идиот", "кретин", "олень",
+    "баран", "козел", "свинья", "петух", "шлюха", "блядина",
+    "тварь", "урод", "выродок", "мразь", "гад", "крыса",
+    "ебать", "ебаный", "ебанутый", "еблан", "заебать",
+    "нахуй", "похуй", "дохуя", "охуеть", "пиздец",
+    "я твою мать вертел", "иди нахуй", "в пизду",
+    "ебанный в рот", "бля буду", "твою мать",
+    "заткнись еблан", "ты тупой", "ты чё дурак"
 ]
 
 DATA_FILE = "spam_data.json"
@@ -169,7 +51,6 @@ def load_data() -> Dict[str, Any]:
             "spam_enabled": False,
             "spam_interval": 1,
             "last_spam": {},
-            "target_chats": [],
             "spam_intensity": 1
         }
 
@@ -207,13 +88,11 @@ class VKGroupAPI:
             logger.error(f"Request error: {e}")
             return {"error": {"error_msg": str(e)}}
     
-    def messages_send(self, peer_id: int, message: str, random_id: int = None) -> Dict:
-        if random_id is None:
-            random_id = int(time.time() * 1000) + random.randint(1, 99999)
+    def messages_send(self, peer_id: int, message: str) -> Dict:
         return self._request("messages.send", {
             "peer_id": peer_id,
             "message": message,
-            "random_id": random_id
+            "random_id": int(time.time() * 1000) + random.randint(1, 99999)
         })
     
     def groups_get_by_id(self) -> Dict:
@@ -236,34 +115,14 @@ class VKGroupAPI:
 
 vk = VKGroupAPI(TOKEN, GROUP_ID)
 
-def generate_spam_message() -> str:
+def generate_spam() -> str:
     insult = random.choice(INSULTS)
-    
     if random.random() < 0.3:
-        prefix = random.choice(PREFIXES)
+        prefix = random.choice(["эй", "слушай", "ты", "а ну"])
         insult = f"{prefix} {insult}"
-    
     if random.random() < 0.5:
-        suffix = random.choice(SUFFIXES)
-        insult = f"{insult}{suffix}"
-    
-    if random.random() < 0.2:
-        insult = insult.upper()
-    
+        insult = f"{insult}!"
     return insult
-
-def generate_spam_sequence(intensity: int = 1) -> str:
-    messages = []
-    count = random.randint(intensity, intensity * 2)
-    
-    for _ in range(count):
-        msg = generate_spam_message()
-        if random.random() < 0.2:
-            emojis = ["😈", "🤬", "💀", "🔥", "👊", "💢", "🤡", "😤", "🤮", "👎"]
-            msg = f"{msg} {random.choice(emojis)}"
-        messages.append(msg)
-    
-    return "\n".join(messages)
 
 async def send_spam(peer_id: int):
     if not data.get("spam_enabled", False):
@@ -276,14 +135,12 @@ async def send_spam(peer_id: int):
     if now - last_spam < interval:
         return
     
-    intensity = data.get("spam_intensity", 1)
-    message = generate_spam_sequence(intensity)
-    
+    message = generate_spam()
     try:
         vk.messages_send(peer_id, message)
         data["last_spam"][str(peer_id)] = now
         save_data(data)
-        logger.info(f"Spam sent to {peer_id}")
+        logger.info(f"Spam to {peer_id}")
     except Exception as e:
         logger.error(f"Send error: {e}")
 
@@ -293,9 +150,11 @@ async def process_message(message_data: dict):
         user_id = message_data.get("from_id", 0)
         text = message_data.get("text", "")
         
+        # Пропускаем сообщения от бота
         if user_id < 0:
             return
         
+        # Проверяем команды (работают и в личке, и в чате)
         if text.startswith(PREFIX):
             command = text[1:].strip().lower()
             
@@ -303,21 +162,19 @@ async def process_message(message_data: dict):
                 data["spam_enabled"] = True
                 save_data(data)
                 vk.messages_send(peer_id, "SPAM ON")
-                logger.info(f"Spam ON in {peer_id}")
                 return
             
             if command == "спам выкл":
                 data["spam_enabled"] = False
                 save_data(data)
                 vk.messages_send(peer_id, "SPAM OFF")
-                logger.info(f"Spam OFF in {peer_id}")
                 return
             
             if command.startswith("интервал "):
                 try:
                     interval = float(command.split()[1])
                     if interval < 0.5:
-                        vk.messages_send(peer_id, "Minimum 0.5 sec")
+                        vk.messages_send(peer_id, "Min 0.5s")
                         return
                     data["spam_interval"] = interval
                     save_data(data)
@@ -326,53 +183,31 @@ async def process_message(message_data: dict):
                     vk.messages_send(peer_id, "!interval [seconds]")
                 return
             
-            if command.startswith("интенсивность "):
-                try:
-                    intensity = int(command.split()[1])
-                    if intensity < 1 or intensity > 5:
-                        vk.messages_send(peer_id, "Intensity 1-5")
-                        return
-                    data["spam_intensity"] = intensity
-                    save_data(data)
-                    vk.messages_send(peer_id, f"Intensity: {intensity}/5")
-                except:
-                    vk.messages_send(peer_id, "!intensity [1-5]")
-                return
-            
             if command == "статус":
-                status = "ON" if data.get("spam_enabled", False) else "OFF"
+                status = "ON" if data.get("spam_enabled") else "OFF"
                 interval = data.get("spam_interval", 1)
-                intensity = data.get("spam_intensity", 1)
-                vk.messages_send(peer_id, 
-                    f"Status: {status}\n"
-                    f"Interval: {interval}s\n"
-                    f"Intensity: {intensity}/5\n"
-                    f"Phrases: {len(INSULTS)}")
+                vk.messages_send(peer_id, f"Status: {status}\nInterval: {interval}s")
                 return
             
             if command == "помощь":
-                help_text = (
-                    "COMMANDS:\n\n"
-                    "!spam on - Enable spam\n"
-                    "!spam off - Disable spam\n"
-                    "!interval [sec] - Set interval\n"
-                    "!intensity [1-5] - Set intensity\n"
-                    "!status - Show status\n"
-                    "!help - This message\n\n"
-                    f"Total phrases: {len(INSULTS)}"
-                )
-                vk.messages_send(peer_id, help_text)
+                vk.messages_send(peer_id, 
+                    "!спам вкл - ON\n"
+                    "!спам выкл - OFF\n"
+                    "!интервал 1 - Interval\n"
+                    "!статус - Status\n"
+                    "!помощь - Help")
                 return
         
-        await send_spam(peer_id)
+        # Спам только в чатах (не в личке)
+        if peer_id != user_id:
+            await send_spam(peer_id)
             
     except Exception as e:
         logger.error(f"Process error: {e}")
 
 async def main():
-    logger.info("Starting SPAM BOT...")
-    logger.info(f"Group ID: {GROUP_ID}")
-    logger.info(f"Total phrases: {len(INSULTS)}")
+    logger.info("SPAM BOT START")
+    logger.info(f"Group: {GROUP_ID}")
     
     try:
         info = vk.groups_get_by_id()
@@ -400,8 +235,8 @@ async def main():
     if not server.startswith(('http://', 'https://')):
         server = 'https://' + server
     
-    logger.info("SPAM BOT READY")
-    logger.info("Commands: !help")
+    logger.info("BOT READY")
+    logger.info("Commands: !помощь")
     
     last_message_id = 0
     
@@ -431,9 +266,7 @@ async def main():
                     if not isinstance(update, list) or len(update) < 1:
                         continue
                     
-                    update_type = update[0]
-                    
-                    if update_type == 4:
+                    if update[0] == 4:
                         if len(update) < 2:
                             continue
                         message_data = update[1]
