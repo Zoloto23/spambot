@@ -150,27 +150,26 @@ async def process_message(message_data: dict):
         user_id = message_data.get("from_id", 0)
         text = message_data.get("text", "")
         
-        logger.info(f"Message from {user_id} to {peer_id}: {text[:30]}")
+        logger.info(f"Message from {user_id}: {text[:30]}")
         
         if user_id < 0:
             return
         
         if text.startswith(PREFIX):
             command = text[1:].strip().lower()
-            logger.info(f"Command: {command}")
             
             if command == "спам вкл":
                 data["spam_enabled"] = True
                 save_data(data)
                 vk.messages_send(peer_id, "SPAM ON")
-                logger.info("Spam turned ON")
+                logger.info("Spam ON")
                 return
             
             if command == "спам выкл":
                 data["spam_enabled"] = False
                 save_data(data)
                 vk.messages_send(peer_id, "SPAM OFF")
-                logger.info("Spam turned OFF")
+                logger.info("Spam OFF")
                 return
             
             if command.startswith("интервал "):
@@ -201,8 +200,7 @@ async def process_message(message_data: dict):
                     "!помощь - Help")
                 return
         
-        if peer_id != user_id:
-            await send_spam(peer_id)
+        await send_spam(peer_id)
             
     except Exception as e:
         logger.error(f"Process error: {e}")
@@ -221,21 +219,27 @@ async def main():
         logger.error(f"Error: {e}")
         return
     
-    lp_info = vk.get_long_poll_server()
-    if "error" in lp_info:
-        logger.error(f"Long Poll error: {lp_info['error']}")
-        return
-    
-    server = lp_info.get("server")
-    key = lp_info.get("key")
-    ts = lp_info.get("ts")
-    
-    logger.info(f"Server: {server}")
-    logger.info(f"Key: {key[:10]}...")
-    logger.info(f"TS: {ts}")
-    
-    if not server:
-        logger.error("No server")
+    # Пробуем получить Long Poll с принудительным обновлением
+    for attempt in range(3):
+        lp_info = vk.get_long_poll_server()
+        if "error" in lp_info:
+            logger.error(f"Long Poll error: {lp_info['error']}")
+            await asyncio.sleep(2)
+            continue
+        
+        server = lp_info.get("server")
+        key = lp_info.get("key")
+        ts = lp_info.get("ts")
+        
+        logger.info(f"Server: {server}")
+        logger.info(f"Key: {key[:20]}...")
+        logger.info(f"TS: {ts}")
+        
+        if server and key and ts:
+            break
+        await asyncio.sleep(2)
+    else:
+        logger.error("Failed to get Long Poll server")
         return
     
     if not server.startswith(('http://', 'https://')):
@@ -245,12 +249,11 @@ async def main():
     logger.info("Commands: !помощь")
     
     last_message_id = 0
+    empty_responses = 0
     
     while True:
         try:
             response = vk.long_poll_request(server, key, ts)
-            
-            logger.info(f"Long Poll response: {str(response)[:200]}")
             
             if "failed" in response:
                 logger.warning(f"Long Poll failed: {response['failed']}")
@@ -270,12 +273,16 @@ async def main():
             ts = response.get("ts", ts)
             updates = response.get("updates", [])
             
-            logger.info(f"Updates count: {len(updates)}")
+            if updates:
+                empty_responses = 0
+                logger.info(f"Updates: {len(updates)}")
+            else:
+                empty_responses += 1
+                if empty_responses % 10 == 0:
+                    logger.info(f"Still waiting for messages... ({empty_responses} empty)")
             
             for update in updates:
                 try:
-                    logger.info(f"Update: {update}")
-                    
                     if not isinstance(update, list) or len(update) < 1:
                         continue
                     
