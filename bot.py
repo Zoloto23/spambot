@@ -28,8 +28,8 @@ if not GROUP_ID:
 API_VERSION = "5.131"
 PREFIX = "!"
 
-# --- ЖЕСТОКИЕ МАТЫ И ОСКОРБЛЕНИЯ ---
-CRUEL_INSULTS = [
+# --- ЖЕСТОКИЕ МАТЫ ---
+INSULTS = [
     "сука ебаная, ты че такой тупой?",
     "блядь, у тебя мозгов вообще нет?",
     "ты ебанутый на всю голову, петушара",
@@ -127,87 +127,7 @@ CRUEL_INSULTS = [
     "ебанный в рот, дебил",
     "ёбаный рот, идиот",
     "я твою мать вертел, лох",
-    "я твою мать ебал, баран",
-    "ты чё дурак что ли? ебаный",
-    "ты тупой как пробка, блядь",
-    "у тебя мозгов нет совсем, сука",
-    "ты вообще тупой? ебать",
-    "заткнись еблан, надоел",
-    "ты чё такой тупорылый? пиздец",
-    "в жопу себе запихни свои слова",
-    "ебать ты тупой, бля буду",
-    "твоя мать тоже такая тупая?",
-    "ты дебил конченый, понял?",
-    "идиот полный, ебаный в рот",
-    "мудила пизда, заебал",
-    "лох педальный, иди нахуй",
-    "петух гнилой, ты че такой вонючий?",
-    "козел драный, закрой ебало",
-    "свинья поганая, ты че в говне?",
-    "шлюха драная, ты че такая дешевая?",
-    "блядина старая, ты уже износилась",
-    "урод конченый, тебя ебали в детстве?",
-    "мразь вонючая, от тебя несет",
-    "гад ползучий, ты че змея?",
-    "крыса ебаная, ты че такой мелкий?",
-    "ебать копать, ты че такой тупой?",
-    "бля буду, ты че несешь?",
-    "твою мать, заебал уже",
-    "ёбаный насос, ты че такой дурак?",
-    "блядский рот, закройся",
-    "хуй тебе в рот, пидорас",
-    "пиздобол ебаный, закройся",
-    "распиздяй конченый, ты че ленивый?",
-    "разъебай драный, ты че грязный?",
-    "еблан тупой, закрой ебало",
-    "ебальник закрой, петушара",
-    "ебашишь хуйню, дебил",
-    "заебало уже, иди нахуй",
-    "доебались до меня, козлы",
-    "поебать мне на тебя, шлюха",
-    "твою мать ебал, урод",
-    "мат твою мать, заебал",
-    "пошёл нахуй, пидор",
-    "иди нахуй, козел",
-    "нахуй иди, мудила",
-    "в пизду иди, гандон",
-    "в жопу себе засунь, петух",
-    "ебанный в рот, дебил",
-    "ёбаный рот, идиот",
-    "я твою мать вертел, лох",
-    "я твою мать ебал, баран",
-    "ты чё дурак что ли? ебаный",
-    "ты тупой как пробка, блядь",
-    "у тебя мозгов нет совсем, сука",
-    "ты вообще тупой? ебать",
-    "заткнись еблан, надоел",
-    "ты чё такой тупорылый? пиздец",
-    "в жопу себе запихни свои слова",
-    "ебать ты тупой, бля буду",
-    "твоя мать тоже такая тупая?",
-    "ты дебил конченый, понял?",
-    "идиот полный, ебаный в рот",
-    "мудила пизда, заебал",
-    "лох педальный, иди нахуй",
-    "петух гнилой, ты че такой вонючий?",
-    "козел драный, закрой ебало",
-    "свинья поганая, ты че в говне?",
-    "шлюха драная, ты че такая дешевая?",
-    "блядина старая, ты уже износилась",
-    "урод конченый, тебя ебали в детстве?",
-    "мразь вонючая, от тебя несет",
-    "гад ползучий, ты че змея?",
-    "крыса ебаная, ты че такой мелкий?",
-    "ебать копать, ты че такой тупой?",
-    "бля буду, ты че несешь?",
-    "твою мать, заебал уже",
-    "ёбаный насос, ты че такой дурак?",
-    "блядский рот, закройся",
-    "хуй тебе в рот, пидорас",
-    "пиздобол ебаный, закройся",
-    "распиздяй конченый, ты че ленивый?",
-    "разъебай драный, ты че грязный?",
-    "еблан тупой, закрой ебало"
+    "я твою мать ебал, баран"
 ]
 
 DATA_FILE = "spam_data.json"
@@ -218,12 +138,13 @@ def load_data() -> Dict[str, Any]:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {
-            "spam_enabled": False,
-            "spam_interval": 0.5,
+            "spam_enabled": True,  # АВТОСПАМ ПО УМОЛЧАНИЮ!
+            "spam_interval": 0.3,
             "last_spam": {},
             "target_user": "",
             "target_name": "",
-            "spam_count": 0
+            "spam_count": 0,
+            "auto_spam": True  # ФЛАГ АВТОСПАМА
         }
 
 def save_data(data: Dict[str, Any]):
@@ -301,31 +222,25 @@ async def get_user_name(user_id: int) -> str:
         return f"ID {user_id}"
 
 def generate_spam_message(target: str = "") -> str:
-    """Генерирует жестокое оскорбление"""
-    insult = random.choice(CRUEL_INSULTS)
-    
-    # Если есть цель - добавляем имя
+    insult = random.choice(INSULTS)
     if target and random.random() < 0.7:
         name = target.split()[0] if " " in target else target
         insult = f"{name}, {insult}"
-    
-    # Случайные украшения
     if random.random() < 0.3:
         emojis = ["🤬", "😈", "💀", "🔥", "👊", "💢", "🤡", "😤", "👎", "💩", "🤮", "😡"]
         insult = f"{insult} {random.choice(emojis)}"
-    
     if random.random() < 0.2:
         insult = insult.upper()
-    
     return insult
 
 async def send_spam(peer_id: int):
-    if not data.get("spam_enabled", False):
+    """Автоспам - всегда активен"""
+    if not data.get("auto_spam", True):
         return
     
     now = time.time()
     last_spam = data["last_spam"].get(str(peer_id), 0)
-    interval = data.get("spam_interval", 0.5)
+    interval = data.get("spam_interval", 0.3)
     
     if now - last_spam < interval:
         return
@@ -333,7 +248,6 @@ async def send_spam(peer_id: int):
     target = data.get("target_name", "")
     message = generate_spam_message(target)
     
-    # Счётчик
     data["spam_count"] = data.get("spam_count", 0) + 1
     if data["spam_count"] % 5 == 0:
         message = f"{message}\n\n[СПАМ #{data['spam_count']}]"
@@ -342,13 +256,12 @@ async def send_spam(peer_id: int):
         vk.messages_send(peer_id, message)
         data["last_spam"][str(peer_id)] = now
         save_data(data)
-        logger.info(f"Spam #{data['spam_count']}")
+        logger.info(f"AutoSpam #{data['spam_count']}")
     except Exception as e:
         logger.error(f"Send error: {e}")
 
 async def process_message(message_data: dict):
     try:
-        # Правильный парсинг сообщения от группы
         if "object" in message_data and "message" in message_data["object"]:
             msg = message_data["object"]["message"]
             peer_id = msg.get("peer_id", 0)
@@ -359,7 +272,6 @@ async def process_message(message_data: dict):
             user_id = message_data.get("from_id", 0)
             text = message_data.get("text", "")
         
-        # Игнорируем сообщения от бота
         if user_id < 0:
             return
         
@@ -369,19 +281,34 @@ async def process_message(message_data: dict):
         if text.startswith(PREFIX):
             command = text[1:].strip().lower()
             
-            if command == "спам вкл":
-                data["spam_enabled"] = True
+            # ВКЛЮЧИТЬ АВТОСПАМ
+            if command == "авто вкл":
+                data["auto_spam"] = True
                 data["spam_count"] = 0
                 save_data(data)
-                vk.messages_send(peer_id, "🤬 СПАМ ВКЛЮЧЕН! ЩАС ВСЕХ РАЗЪЕБУ!")
-                logger.info("SPAM ON")
+                vk.messages_send(peer_id, "🔥 АВТОСПАМ ВКЛЮЧЕН! ЕБАШУ БЕЗ ОСТАНОВКИ!")
                 return
             
-            if command == "спам выкл":
-                data["spam_enabled"] = False
+            # ВЫКЛЮЧИТЬ АВТОСПАМ
+            if command == "авто выкл":
+                data["auto_spam"] = False
                 save_data(data)
-                vk.messages_send(peer_id, "💀 СПАМ ВЫКЛЮЧЕН! УШЕЛ В ТЕНЬ...")
-                logger.info("SPAM OFF")
+                vk.messages_send(peer_id, "💀 АВТОСПАМ ВЫКЛЮЧЕН! ОСТАНОВИЛСЯ!")
+                return
+            
+            # СПАМ ВКЛ (старая команда, теперь просто включает авто)
+            if command == "спам вкл":
+                data["auto_spam"] = True
+                data["spam_count"] = 0
+                save_data(data)
+                vk.messages_send(peer_id, "🔥 АВТОСПАМ ВКЛЮЧЕН!")
+                return
+            
+            # СПАМ ВЫКЛ (старая команда)
+            if command == "спам выкл":
+                data["auto_spam"] = False
+                save_data(data)
+                vk.messages_send(peer_id, "💀 АВТОСПАМ ВЫКЛЮЧЕН!")
                 return
             
             if command.startswith("цель "):
@@ -392,7 +319,7 @@ async def process_message(message_data: dict):
                     data["target_user"] = target_id
                     data["target_name"] = name
                     save_data(data)
-                    vk.messages_send(peer_id, f"🎯 ЦЕЛЬ: {name}\nЕБАШЬ ЕГО!")
+                    vk.messages_send(peer_id, f"🎯 ЦЕЛЬ: {name}\nЕБАШУ ЕГО!")
                 else:
                     vk.messages_send(peer_id, "❌ !цель [ID]")
                 return
@@ -418,13 +345,13 @@ async def process_message(message_data: dict):
                 return
             
             if command == "статус":
-                status = "🔴 ВКЛ" if data.get("spam_enabled") else "🟢 ВЫКЛ"
-                interval = data.get("spam_interval", 0.5)
+                status = "🔴 ВКЛ" if data.get("auto_spam") else "🟢 ВЫКЛ"
+                interval = data.get("spam_interval", 0.3)
                 target = data.get("target_name", "НЕТ")
                 count = data.get("spam_count", 0)
                 vk.messages_send(peer_id, 
                     f"🤬 СТАТУС\n"
-                    f"СПАМ: {status}\n"
+                    f"АВТОСПАМ: {status}\n"
                     f"ИНТЕРВАЛ: {interval}С\n"
                     f"ЦЕЛЬ: {target}\n"
                     f"ВСЕГО: {count}")
@@ -433,8 +360,10 @@ async def process_message(message_data: dict):
             if command == "помощь":
                 vk.messages_send(peer_id, 
                     "🤬 КОМАНДЫ:\n\n"
-                    "!спам вкл - ЗАПУСТИТЬ\n"
-                    "!спам выкл - ОСТАНОВИТЬ\n"
+                    "!авто вкл - ЗАПУСТИТЬ АВТОСПАМ\n"
+                    "!авто выкл - ОСТАНОВИТЬ\n"
+                    "!спам вкл - ТО ЖЕ САМОЕ\n"
+                    "!спам выкл - ТО ЖЕ САМОЕ\n"
                     "!цель [ID] - НАЗНАЧИТЬ ЖЕРТВУ\n"
                     "!цель выкл - ОТМЕНИТЬ\n"
                     "!интервал [сек] - СКОРОСТЬ\n"
@@ -442,16 +371,17 @@ async def process_message(message_data: dict):
                     "!помощь - ЭТО")
                 return
         
-        # Автоспам
+        # --- АВТОСПАМ ВСЕГДА АКТИВЕН ---
         await send_spam(peer_id)
             
     except Exception as e:
         logger.error(f"Process error: {e}")
 
 async def main():
-    logger.info("🤬 CRUEL SPAM BOT START")
+    logger.info("🔥 CRUEL AUTOSPAM BOT START")
     logger.info(f"Group: {GROUP_ID}")
-    logger.info(f"Insults: {len(CRUEL_INSULTS)}")
+    logger.info(f"Insults: {len(INSULTS)}")
+    logger.info("⚡ AUTOSPAM IS ON BY DEFAULT!")
     
     try:
         info = vk.groups_get_by_id()
@@ -479,8 +409,8 @@ async def main():
     if not server.startswith(('http://', 'https://')):
         server = 'https://' + server
     
-    logger.info("✅ CRUEL SPAM BOT READY")
-    logger.info("💀 !помощь")
+    logger.info("✅ CRUEL AUTOSPAM BOT READY")
+    logger.info("💀 БОТ УЖЕ ЕБАШИТ! ОСТАНОВИ КОМАНДОЙ !авто выкл")
     
     while True:
         try:
