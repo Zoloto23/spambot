@@ -51,7 +51,8 @@ def load_data() -> Dict[str, Any]:
             "spam_enabled": False,
             "spam_interval": 1,
             "last_spam": {},
-            "spam_intensity": 1
+            "spam_intensity": 1,
+            "last_message_id": 0
         }
 
 def save_data(data: Dict[str, Any]):
@@ -93,6 +94,15 @@ class VKGroupAPI:
             "peer_id": peer_id,
             "message": message,
             "random_id": int(time.time() * 1000) + random.randint(1, 99999)
+        })
+    
+    def messages_get(self, count: int = 20, offset: int = 0) -> Dict:
+        """Получение сообщений через API (альтернативный метод)"""
+        return self._request("messages.get", {
+            "count": count,
+            "offset": offset,
+            "preview_length": 0,
+            "extended": 1
         })
     
     def groups_get_by_id(self) -> Dict:
@@ -219,27 +229,22 @@ async def main():
         logger.error(f"Error: {e}")
         return
     
-    # Пробуем получить Long Poll с принудительным обновлением
-    for attempt in range(3):
-        lp_info = vk.get_long_poll_server()
-        if "error" in lp_info:
-            logger.error(f"Long Poll error: {lp_info['error']}")
-            await asyncio.sleep(2)
-            continue
-        
-        server = lp_info.get("server")
-        key = lp_info.get("key")
-        ts = lp_info.get("ts")
-        
-        logger.info(f"Server: {server}")
-        logger.info(f"Key: {key[:20]}...")
-        logger.info(f"TS: {ts}")
-        
-        if server and key and ts:
-            break
-        await asyncio.sleep(2)
-    else:
-        logger.error("Failed to get Long Poll server")
+    # Пытаемся получить Long Poll
+    lp_info = vk.get_long_poll_server()
+    if "error" in lp_info:
+        logger.error(f"Long Poll error: {lp_info['error']}")
+        return
+    
+    server = lp_info.get("server")
+    key = lp_info.get("key")
+    ts = lp_info.get("ts")
+    
+    logger.info(f"Server: {server}")
+    logger.info(f"Key: {key[:20]}...")
+    logger.info(f"TS: {ts}")
+    
+    if not server:
+        logger.error("No server")
         return
     
     if not server.startswith(('http://', 'https://')):
@@ -248,8 +253,19 @@ async def main():
     logger.info("BOT READY")
     logger.info("Commands: !помощь")
     
-    last_message_id = 0
-    empty_responses = 0
+    # Сначала получаем последние сообщения через API
+    try:
+        messages = vk.messages_get(count=1)
+        if "error" not in messages and messages.get("items"):
+            last_msg = messages["items"][0]
+            data["last_message_id"] = last_msg.get("id", 0)
+            save_data(data)
+            logger.info(f"Last message ID: {data['last_message_id']}")
+    except Exception as e:
+        logger.error(f"Get messages error: {e}")
+    
+    last_message_id = data.get("last_message_id", 0)
+    empty_count = 0
     
     while True:
         try:
@@ -274,12 +290,23 @@ async def main():
             updates = response.get("updates", [])
             
             if updates:
-                empty_responses = 0
+                empty_count = 0
                 logger.info(f"Updates: {len(updates)}")
             else:
-                empty_responses += 1
-                if empty_responses % 10 == 0:
-                    logger.info(f"Still waiting for messages... ({empty_responses} empty)")
+                empty_count += 1
+                if empty_count % 20 == 0:
+                    logger.info(f"Waiting for messages... ({empty_count} empty)")
+                    # Периодически обновляем Long Poll сервер
+                    if empty_count > 50:
+                        logger.info("Refreshing Long Poll server...")
+                        lp_info = vk.get_long_poll_server()
+                        if "error" not in lp_info:
+                            server = lp_info.get("server")
+                            key = lp_info.get("key")
+                            ts = lp_info.get("ts")
+                            if server and not server.startswith(('http://', 'https://')):
+                                server = 'https://' + server
+                        empty_count = 0
             
             for update in updates:
                 try:
@@ -297,6 +324,8 @@ async def main():
                         if message_id <= last_message_id:
                             continue
                         last_message_id = message_id
+                        data["last_message_id"] = last_message_id
+                        save_data(data)
                         
                         await process_message(message_data)
                     
