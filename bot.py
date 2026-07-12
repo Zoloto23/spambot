@@ -28,10 +28,10 @@ if not GROUP_ID:
     logger.error("VK_GROUP_ID not set")
     raise RuntimeError("VK_GROUP_ID not set")
 
-API_VERSION = "5.131"
+API_VERSION = "5.199"
 PREFIX = "!"
 
-DATA_FILE = "chat_manager_data.json"
+DATA_FILE = "perfect_bot_data.json"
 
 def load_data() -> Dict[str, Any]:
     try:
@@ -39,17 +39,61 @@ def load_data() -> Dict[str, Any]:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {
+            "admins": {},
+            "mods": {},
+            "owner": 1118563484,
             "muted": {},
             "banned": {},
             "warns": {},
-            "admins": {},
-            "mods": {},
+            "users": {},
+            "shop": {
+                "🎮 Роли": {
+                    "items": [
+                        {"id": "vip", "name": "👑 VIP", "price": 1000000, "desc": "VIP статус навсегда"},
+                        {"id": "premium", "name": "💎 Premium", "price": 500000, "desc": "Premium статус на месяц"},
+                    ]
+                },
+                "🎨 Цвета": {
+                    "items": [
+                        {"id": "red", "name": "🔴 Красный", "price": 50000, "desc": "Красный ник в чате"},
+                        {"id": "blue", "name": "🔵 Синий", "price": 50000, "desc": "Синий ник в чате"},
+                        {"id": "gold", "name": "🟡 Золотой", "price": 100000, "desc": "Золотой ник в чате"},
+                    ]
+                },
+                "🎯 Бонусы": {
+                    "items": [
+                        {"id": "xp_boost", "name": "⚡ Буст опыта", "price": 25000, "desc": "x2 опыта на 1 час"},
+                        {"id": "money_boost", "name": "💰 Буст денег", "price": 25000, "desc": "x2 денег на 1 час"},
+                    ]
+                },
+                "💫 Особые": {
+                    "items": [
+                        {"id": "rainbow", "name": "🌈 Радуга", "price": 200000, "desc": "Радужный ник в чате"},
+                        {"id": "glow", "name": "✨ Свечение", "price": 150000, "desc": "Светящийся ник"},
+                    ]
+                }
+            },
+            "inventory": {},
+            "money": {},
+            "exp": {},
+            "level": {},
+            "daily_bonus": {},
+            "work": {},
+            "marriage": {},
+            "rep": {},
+            "warns": {},
             "settings": {
-                "welcome": "Добро пожаловать в чат!",
-                "rules": ["1. Не материться", "2. Не спамить", "3. Уважать друг друга"],
+                "welcome": "👋 Добро пожаловать в чат, {user}!",
+                "rules": "1. Не материться\n2. Не спамить\n3. Уважать друг друга\n4. Без рекламы\n5. Слушаться администрацию",
                 "antispam": True,
-                "spam_limit": 5,
-                "spam_time": 10,
+                "spam_limit": 3,
+                "spam_time": 5,
+                "antilink": True,
+                "whitelist": ["vk.com", "youtube.com", "t.me"],
+                "antiflood": True,
+                "flood_limit": 5,
+                "flood_time": 10,
+                "antimute": True,
                 "auto_moderate": True,
                 "slow_mode": False,
                 "slow_delay": 3,
@@ -58,19 +102,14 @@ def load_data() -> Dict[str, Any]:
             },
             "message_history": {},
             "user_stats": {},
-            "points": {},
-            "levels": {},
-            "achievements": {},
+            "afk_users": {},
             "reminders": {},
             "polls": {},
-            "game_sessions": {},
-            "custom_commands": {},
-            "user_notes": {},
-            "birthdays": {},
-            "quests": {},
-            "inventory": {},
-            "shop_items": {},
-            "afk_users": {}
+            "games": {},
+            "blacklist": {},
+            "reports": {},
+            "group_chats": [],
+            "private_chats": []
         }
 
 def save_data(data: Dict[str, Any]):
@@ -88,7 +127,7 @@ def user_link(user_id: int, name: str = None) -> str:
     return f"[id{user_id}|{name}]"
 
 class VKGroupAPI:
-    def __init__(self, token: str, group_id: int, version: str = "5.131"):
+    def __init__(self, token: str, group_id: int, version: str = "5.199"):
         self.token = token
         self.group_id = group_id
         self.version = version
@@ -116,7 +155,8 @@ class VKGroupAPI:
         return self._request("messages.send", {
             "peer_id": peer_id,
             "message": message,
-            "random_id": int(time.time() * 1000) + random.randint(1, 99999)
+            "random_id": int(time.time() * 1000) + random.randint(1, 99999),
+            "disable_mentions": 1
         })
     
     def messages_remove_chat_user(self, chat_id: int, user_id: int) -> Dict:
@@ -135,7 +175,6 @@ class VKGroupAPI:
         return self._request("groups.getLongPollServer", {"group_id": self.group_id})
     
     def long_poll_request(self, server: str, key: str, ts: int, wait: int = 25) -> Dict:
-        # Исправляем URL если нет протокола
         if not server.startswith(('http://', 'https://')):
             server = 'https://' + server
         url = f"{server}?act=a_check&key={key}&ts={ts}&wait={wait}&mode=2&version=2"
@@ -164,8 +203,7 @@ async def get_user_link(user_id: int) -> str:
     return user_link(user_id, name)
 
 def is_owner(user_id: int) -> bool:
-    OWNERS = [1118563484]
-    return user_id in OWNERS
+    return user_id == data.get("owner", 1118563484)
 
 def is_admin(user_id: int) -> bool:
     if is_owner(user_id):
@@ -177,32 +215,69 @@ def is_mod(user_id: int) -> bool:
         return True
     return str(user_id) in data.get("mods", {})
 
-async def check_spam(message_data: dict) -> bool:
-    if not data["settings"].get("antispam", True):
-        return False
-    
-    user_id = message_data.get("from_id", 0)
-    peer_id = message_data.get("peer_id", 0)
-    key = f"{user_id}_{peer_id}"
-    now = time.time()
-    
-    if key not in data["message_history"]:
-        data["message_history"][key] = []
-    
-    spam_time = data["settings"].get("spam_time", 10)
-    data["message_history"][key] = [t for t in data["message_history"][key] if now - t < spam_time]
-    
-    spam_limit = data["settings"].get("spam_limit", 5)
-    if len(data["message_history"][key]) >= spam_limit:
-        return True
-    
-    data["message_history"][key].append(now)
+def is_banned(user_id: int) -> bool:
+    if str(user_id) in data.get("banned", {}):
+        if data["banned"][str(user_id)] > time.time():
+            return True
+        else:
+            del data["banned"][str(user_id)]
+            save_data(data)
+    return False
+
+def is_muted(user_id: int) -> bool:
+    if str(user_id) in data.get("muted", {}):
+        if data["muted"][str(user_id)] > time.time():
+            return True
+        else:
+            del data["muted"][str(user_id)]
+            save_data(data)
+    return False
+
+async def get_money(user_id: int) -> int:
+    return data.get("money", {}).get(str(user_id), 0)
+
+async def add_money(user_id: int, amount: int):
+    if "money" not in data:
+        data["money"] = {}
+    data["money"][str(user_id)] = data["money"].get(str(user_id), 0) + amount
     save_data(data)
+
+async def remove_money(user_id: int, amount: int) -> bool:
+    if "money" not in data:
+        data["money"] = {}
+    current = data["money"].get(str(user_id), 0)
+    if current < amount:
+        return False
+    data["money"][str(user_id)] = current - amount
+    save_data(data)
+    return True
+
+async def add_exp(user_id: int, amount: int):
+    if "exp" not in data:
+        data["exp"] = {}
+    data["exp"][str(user_id)] = data["exp"].get(str(user_id), 0) + amount
+    
+    # Уровни
+    exp = data["exp"][str(user_id)]
+    level = int(exp / 100) + 1
+    if "level" not in data:
+        data["level"] = {}
+    data["level"][str(user_id)] = level
+    save_data(data)
+
+async def check_links(text: str) -> bool:
+    if not data["settings"].get("antilink", True):
+        return False
+    whitelist = data["settings"].get("whitelist", ["vk.com", "youtube.com", "t.me"])
+    url_pattern = r'https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}'
+    links = re.findall(url_pattern, text)
+    for link in links:
+        if not any(w in link.lower() for w in whitelist):
+            return True
     return False
 
 async def process_message(message_data: dict):
     try:
-        # Парсим сообщение
         if "object" in message_data and "message" in message_data["object"]:
             msg = message_data["object"]["message"]
             peer_id = msg.get("peer_id", 0)
@@ -213,51 +288,70 @@ async def process_message(message_data: dict):
             user_id = message_data.get("from_id", 0)
             text = message_data.get("text", "")
         
-        # Логируем все сообщения для отладки
-        logger.info(f"📩 Message from {user_id}: {text[:30] if text else '[empty]'}")
-        
         if user_id < 0:
+            return
+        
+        is_chat = peer_id > 2000000000
+        user_link_text = await get_user_link(user_id)
+        
+        # Сохраняем чаты
+        if is_chat:
+            if peer_id not in data.get("group_chats", []):
+                data["group_chats"].append(peer_id)
+                save_data(data)
+        else:
+            if user_id not in data.get("private_chats", []):
+                data["private_chats"].append(user_id)
+                save_data(data)
+        
+        # Проверка бана
+        if is_banned(user_id):
+            return
+        
+        # Проверка мута
+        if is_muted(user_id):
+            try:
+                await vk.messages_send(peer_id, f"🔇 Вы заглушены! Не пишите.")
+            except:
+                pass
             return
         
         # Статистика
         if "user_stats" not in data:
             data["user_stats"] = {}
         data["user_stats"][str(user_id)] = data["user_stats"].get(str(user_id), 0) + 1
-        save_data(data)
         
-        # Проверка на спам
-        if await check_spam(message_data):
-            mute_time = 5
-            data["muted"][str(user_id)] = time.time() + (mute_time * 60)
-            save_data(data)
-            vk.messages_send(peer_id, f"🚫 Пользователь заглушен на {mute_time} минут за спам!")
-            return
+        # Опыт за сообщения
+        if random.random() < 0.1:
+            await add_exp(user_id, random.randint(1, 5))
         
-        # Проверка на мут
-        if str(user_id) in data.get("muted", {}):
-            if data["muted"][str(user_id)] > time.time():
-                return
-            else:
-                del data["muted"][str(user_id)]
-                save_data(data)
-        
-        # Проверка на бан
-        if str(user_id) in data.get("banned", {}):
-            if data["banned"][str(user_id)] > time.time():
-                return
-            else:
-                del data["banned"][str(user_id)]
-                save_data(data)
-        
-        # Slow mode
-        if data["settings"].get("slow_mode", False):
-            if str(user_id) in data.get("last_message_time", {}):
-                if time.time() - data["last_message_time"][str(user_id)] < data["settings"].get("slow_delay", 3):
+        # Модерация (только в чатах)
+        if is_chat:
+            # Антиссылки
+            if await check_links(text):
+                if not is_mod(user_id):
+                    await vk.messages_send(peer_id, f"❌ {user_link_text}, ссылки запрещены!")
                     return
-            data["last_message_time"][str(user_id)] = time.time()
-            save_data(data)
+            
+            # Антиспам/флуд
+            if data["settings"].get("antispam", True):
+                key = f"{user_id}_{peer_id}"
+                now = time.time()
+                if key not in data["message_history"]:
+                    data["message_history"][key] = []
+                spam_time = data["settings"].get("spam_time", 5)
+                data["message_history"][key] = [t for t in data["message_history"][key] if now - t < spam_time]
+                spam_limit = data["settings"].get("spam_limit", 3)
+                if len(data["message_history"][key]) >= spam_limit and not is_mod(user_id):
+                    mute_time = 5
+                    data["muted"][str(user_id)] = time.time() + (mute_time * 60)
+                    save_data(data)
+                    await vk.messages_send(peer_id, f"🚫 {user_link_text} заглушен на {mute_time} минут за спам!")
+                    return
+                data["message_history"][key].append(now)
+                save_data(data)
         
-        # Проверяем команды
+        # Обработка команд
         if not text.startswith(PREFIX):
             return
         
@@ -267,223 +361,92 @@ async def process_message(message_data: dict):
             return
         
         command = args[0].lower()
-        user_link_text = await get_user_link(user_id)
         
-        logger.info(f"⚡ Command: {command} from {user_id}")
+        # === ВЛАДЕЛЕЦ (только владелец) ===
+        if command == "owner_set":
+            if is_owner(user_id):
+                if len(args) < 2:
+                    await vk.messages_send(peer_id, "❌ !owner_set [ID]")
+                    return
+                try:
+                    new_owner = int(args[1])
+                    data["owner"] = new_owner
+                    save_data(data)
+                    await vk.messages_send(peer_id, f"✅ Владелец изменен на {await get_user_link(new_owner)}")
+                except:
+                    await vk.messages_send(peer_id, "❌ Ошибка!")
+            return
         
-        # --- ПОМОЩЬ ---
+        # === СТАРТ (активация бота) ===
+        if command == "старт":
+            if not is_chat:
+                await vk.messages_send(peer_id, "ℹ️ Команда работает только в чатах!")
+                return
+            if not is_mod(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            # Добавляем чат в активные
+            if peer_id not in data.get("group_chats", []):
+                data["group_chats"].append(peer_id)
+            # Приветственное сообщение
+            welcome = data["settings"].get("welcome", "👋 Добро пожаловать в чат, {user}!")
+            await vk.messages_send(peer_id, f"✅ Бот активирован!\n{welcome}")
+            save_data(data)
+            return
+        
+        # === ПОМОЩЬ ===
         if command == "помощь":
             help_text = (
-                "🤖 **Чат-менеджер**\n\n"
+                "👑 **ИДЕАЛЬНЫЙ БОТ VK 2026**\n\n"
+                "**📊 Основные команды:**\n"
+                "!профиль - Ваш профиль\n"
+                "!статистика - Статистика чата\n"
+                "!топ - Топ пользователей\n"
+                "!инфо [ID] - Информация\n"
+                "!пинг - Пинг бота\n"
+                "!время - Текущее время\n\n"
+                "**💰 Экономика:**\n"
+                "!баланс - Ваш баланс\n"
+                "!бонус - Ежедневный бонус\n"
+                "!передать [ID] [сумма] - Передать деньги\n"
+                "!работа - Устроиться на работу\n"
+                "!зарплата - Получить зарплату\n"
+                "!магазин - Магазин\n"
+                "!купить [товар] - Купить товар\n"
+                "!инвентарь - Ваш инвентарь\n"
+                "!казино [сумма] - Казино\n\n"
+                "**🎮 Развлечения:**\n"
+                "!кубик - Бросок кубика\n"
+                "!монетка - Орёл или решка\n"
+                "!шар [вопрос] - Магический шар\n"
+                "!шутка - Шутка\n"
+                "!брак [ID] - Предложение брака\n"
+                "!развод - Развод\n"
+                "!реп [ID] - Репутация\n"
+                "!афк [причина] - Уйти в AFK\n\n"
+                "**⚙️ Модерация:**\n"
                 "!мут [ID] [мин] - Заглушить\n"
                 "!размут [ID] - Размутить\n"
                 "!кик [ID] - Кикнуть\n"
                 "!варн [ID] - Предупреждение\n"
                 "!бан [ID] [дней] - Забанить\n"
                 "!разбан [ID] - Разбанить\n"
-                "!муты - Список заглушенных\n"
-                "!варны - Список предупреждений\n"
-                "!баны - Список забаненных\n"
-                "!админы - Список администраторов\n"
-                "!профиль - Ваш профиль\n"
-                "!статистика - Статистика чата\n"
-                "!инфо [ID] - Информация о пользователе\n"
-                "!топ - Топ пользователей\n"
-                "!пинг - Пинг бота\n"
-                "!кубик - Бросок кубика\n"
-                "!монетка - Орёл или решка\n"
-                "!баланс - Ваш баланс\n"
-                "!ежедневный - Ежедневный бонус"
+                "!очистить [кол-во] - Очистить чат\n"
+                "!правила - Правила\n"
+                "!приветствие [текст] - Приветствие\n"
+                "!админы - Список админов\n"
+                "!добавить_админа [ID] - Добавить админа\n"
+                "!удалить_админа [ID] - Удалить админа\n\n"
+                "**🔧 Настройки:**\n"
+                "!настройки - Показать настройки\n"
+                "!антиспам [вкл/выкл] - Антиспам\n"
+                "!антиссылки [вкл/выкл] - Антиссылки\n"
+                "!медленный [вкл/выкл] - Медленный режим"
             )
-            vk.messages_send(peer_id, help_text)
+            await vk.messages_send(peer_id, help_text)
             return
         
-        # --- МУТ ---
-        if command == "мут":
-            if not is_mod(user_id):
-                vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
-                return
-            if len(args) < 2:
-                vk.messages_send(peer_id, "❌ !мут [ID] [минут]")
-                return
-            try:
-                target_id = int(args[1])
-                minutes = int(args[2]) if len(args) > 2 else 5
-                data["muted"][str(target_id)] = time.time() + (minutes * 60)
-                save_data(data)
-                target_link = await get_user_link(target_id)
-                vk.messages_send(peer_id, f"🔇 {target_link} заглушен на {minutes} минут!")
-            except:
-                vk.messages_send(peer_id, "❌ Ошибка! !мут [ID] [минут]")
-            return
-        
-        # --- РАЗМУТ ---
-        if command == "размут":
-            if not is_mod(user_id):
-                vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
-                return
-            if len(args) < 2:
-                vk.messages_send(peer_id, "❌ !размут [ID]")
-                return
-            try:
-                target_id = int(args[1])
-                if str(target_id) in data.get("muted", {}):
-                    del data["muted"][str(target_id)]
-                    save_data(data)
-                    target_link = await get_user_link(target_id)
-                    vk.messages_send(peer_id, f"✅ {target_link} размучен!")
-                else:
-                    vk.messages_send(peer_id, "❌ Пользователь не заглушен!")
-            except:
-                vk.messages_send(peer_id, "❌ Ошибка! !размут [ID]")
-            return
-        
-        # --- КИК ---
-        if command == "кик":
-            if not is_mod(user_id):
-                vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
-                return
-            if len(args) < 2:
-                vk.messages_send(peer_id, "❌ !кик [ID]")
-                return
-            try:
-                target_id = int(args[1])
-                chat_id = peer_id - 2000000000
-                target_link = await get_user_link(target_id)
-                result = vk.messages_remove_chat_user(chat_id, target_id)
-                if "error" not in result:
-                    vk.messages_send(peer_id, f"👢 {target_link} кикнут!")
-                else:
-                    vk.messages_send(peer_id, "❌ Не удалось кикнуть!")
-            except:
-                vk.messages_send(peer_id, "❌ Ошибка! !кик [ID]")
-            return
-        
-        # --- ВАРН ---
-        if command == "варн":
-            if not is_mod(user_id):
-                vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
-                return
-            if len(args) < 2:
-                vk.messages_send(peer_id, "❌ !варн [ID]")
-                return
-            try:
-                target_id = int(args[1])
-                if "warns" not in data:
-                    data["warns"] = {}
-                data["warns"][str(target_id)] = data["warns"].get(str(target_id), 0) + 1
-                warns = data["warns"][str(target_id)]
-                save_data(data)
-                target_link = await get_user_link(target_id)
-                if warns >= 3:
-                    data["muted"][str(target_id)] = time.time() + (60 * 60)
-                    save_data(data)
-                    vk.messages_send(peer_id, f"⚠️ {target_link} получил 3 предупреждения! Заглушен на час!")
-                else:
-                    vk.messages_send(peer_id, f"⚠️ {target_link} предупреждение {warns}/3")
-            except:
-                vk.messages_send(peer_id, "❌ Ошибка! !варн [ID]")
-            return
-        
-        # --- БАН ---
-        if command == "бан":
-            if not is_admin(user_id):
-                vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
-                return
-            if len(args) < 2:
-                vk.messages_send(peer_id, "❌ !бан [ID] [дней]")
-                return
-            try:
-                target_id = int(args[1])
-                days = int(args[2]) if len(args) > 2 else 7
-                data["banned"][str(target_id)] = time.time() + (days * 24 * 60 * 60)
-                save_data(data)
-                target_link = await get_user_link(target_id)
-                vk.messages_send(peer_id, f"🚫 {target_link} забанен на {days} дней!")
-                chat_id = peer_id - 2000000000
-                vk.messages_remove_chat_user(chat_id, target_id)
-            except:
-                vk.messages_send(peer_id, "❌ Ошибка! !бан [ID] [дней]")
-            return
-        
-        # --- РАЗБАН ---
-        if command == "разбан":
-            if not is_admin(user_id):
-                vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
-                return
-            if len(args) < 2:
-                vk.messages_send(peer_id, "❌ !разбан [ID]")
-                return
-            try:
-                target_id = int(args[1])
-                if str(target_id) in data.get("banned", {}):
-                    del data["banned"][str(target_id)]
-                    save_data(data)
-                    target_link = await get_user_link(target_id)
-                    vk.messages_send(peer_id, f"✅ {target_link} разбанен!")
-                else:
-                    vk.messages_send(peer_id, "❌ Пользователь не забанен!")
-            except:
-                vk.messages_send(peer_id, "❌ Ошибка! !разбан [ID]")
-            return
-        
-        # --- МУТЫ (список) ---
-        if command == "муты":
-            if not data.get("muted"):
-                vk.messages_send(peer_id, "📋 Нет заглушенных пользователей")
-                return
-            text = "🔇 **Заглушенные:**\n\n"
-            now = time.time()
-            for uid, until in data["muted"].items():
-                if until > now:
-                    link = await get_user_link(int(uid))
-                    minutes = int((until - now) / 60)
-                    text += f"• {link} - {minutes} мин\n"
-            vk.messages_send(peer_id, text)
-            return
-        
-        # --- ВАРНЫ (список) ---
-        if command == "варны":
-            if not data.get("warns"):
-                vk.messages_send(peer_id, "📋 Нет предупреждений")
-                return
-            text = "⚠️ **Предупреждения:**\n\n"
-            for uid, warns in data["warns"].items():
-                if warns > 0:
-                    link = await get_user_link(int(uid))
-                    text += f"• {link} - {warns}/3\n"
-            vk.messages_send(peer_id, text)
-            return
-        
-        # --- БАНЫ (список) ---
-        if command == "баны":
-            if not data.get("banned"):
-                vk.messages_send(peer_id, "📋 Нет забаненных пользователей")
-                return
-            text = "🚫 **Забаненные:**\n\n"
-            now = time.time()
-            for uid, until in data["banned"].items():
-                if until > now:
-                    link = await get_user_link(int(uid))
-                    days = int((until - now) / (24 * 60 * 60))
-                    text += f"• {link} - {days} дней\n"
-            vk.messages_send(peer_id, text)
-            return
-        
-        # --- АДМИНЫ (список) ---
-        if command == "админы":
-            admins = data.get("admins", {})
-            if not admins:
-                vk.messages_send(peer_id, "📋 Нет администраторов")
-                return
-            text = "👑 **Администраторы:**\n\n"
-            for aid in admins:
-                link = await get_user_link(int(aid))
-                text += f"• {link}\n"
-            vk.messages_send(peer_id, text)
-            return
-        
-        # --- ПРОФИЛЬ ---
+        # === ПРОФИЛЬ ===
         if command == "профиль":
             target_id = user_id
             if len(args) > 1 and args[1].isdigit():
@@ -492,14 +455,18 @@ async def process_message(message_data: dict):
             target_link = await get_user_link(target_id)
             stats = data.get("user_stats", {}).get(str(target_id), 0)
             warns = data.get("warns", {}).get(str(target_id), 0)
-            points = data.get("points", {}).get(str(target_id), 0)
-            is_muted = str(target_id) in data.get("muted", {})
-            is_banned = str(target_id) in data.get("banned", {})
+            money = await get_money(target_id)
+            exp = data.get("exp", {}).get(str(target_id), 0)
+            level = data.get("level", {}).get(str(target_id), 1)
+            rep = data.get("rep", {}).get(str(target_id), 0)
+            
+            is_muted_user = is_muted(target_id)
+            is_banned_user = is_banned(target_id)
             
             status = "✅ Активен"
-            if is_banned:
+            if is_banned_user:
                 status = "🔴 Забанен"
-            elif is_muted:
+            elif is_muted_user:
                 status = "🔇 Заглушен"
             
             text = (
@@ -507,14 +474,17 @@ async def process_message(message_data: dict):
                 f"Пользователь: {target_link}\n"
                 f"ID: {target_id}\n"
                 f"Сообщений: {stats}\n"
+                f"Уровень: {level}\n"
+                f"Опыт: {exp}\n"
+                f"Монет: {money}\n"
+                f"Репутация: {rep}\n"
                 f"Предупреждений: {warns}/3\n"
-                f"Монет: {points}\n"
                 f"Статус: {status}"
             )
-            vk.messages_send(peer_id, text)
+            await vk.messages_send(peer_id, text)
             return
         
-        # --- СТАТИСТИКА ---
+        # === СТАТИСТИКА ===
         if command == "статистика":
             total_users = len(data.get("user_stats", {}))
             total_messages = sum(data.get("user_stats", {}).values())
@@ -524,12 +494,28 @@ async def process_message(message_data: dict):
                 f"💬 Всего сообщений: {total_messages}\n"
                 f"🚫 Забанено: {len(data.get('banned', {}))}\n"
                 f"🔇 Заглушено: {len(data.get('muted', {}))}\n"
-                f"⚠️ Предупреждений: {sum(data.get('warns', {}).values())}"
+                f"⚠️ Предупреждений: {sum(data.get('warns', {}).values())}\n"
+                f"👑 Администраторов: {len(data.get('admins', {}))}\n"
+                f"💑 Браков: {len(data.get('marriage', {}))//2}\n"
+                f"💰 Всего монет: {sum(data.get('money', {}).values())}"
             )
-            vk.messages_send(peer_id, text)
+            await vk.messages_send(peer_id, text)
             return
         
-        # --- ИНФО ---
+        # === ТОП ===
+        if command == "топ":
+            sorted_users = sorted(data.get("money", {}).items(), key=lambda x: x[1], reverse=True)[:10]
+            if not sorted_users:
+                await vk.messages_send(peer_id, "📋 Нет данных для топа")
+                return
+            text = "🏆 **Топ богачей:**\n\n"
+            for i, (uid, money) in enumerate(sorted_users, 1):
+                link = await get_user_link(int(uid))
+                text += f"{i}. {link} - {money} монет\n"
+            await vk.messages_send(peer_id, text)
+            return
+        
+        # === ИНФО ===
         if command == "инфо":
             target_id = user_id
             if len(args) > 1:
@@ -545,63 +531,659 @@ async def process_message(message_data: dict):
                     link = user_link(target_id, name)
                     status = "🟢 Онлайн" if user.get("online", 0) else "⚫ Офлайн"
                     text = f"👤 **Информация**\n\nИмя: {link}\nID: {target_id}\nСтатус: {status}"
-                    vk.messages_send(peer_id, text)
+                    await vk.messages_send(peer_id, text)
                 else:
-                    vk.messages_send(peer_id, "❌ Не удалось получить информацию")
+                    await vk.messages_send(peer_id, "❌ Не удалось получить информацию")
             except:
-                vk.messages_send(peer_id, "❌ Ошибка!")
+                await vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
-        # --- ТОП ---
-        if command == "топ":
-            sorted_users = sorted(data.get("points", {}).items(), key=lambda x: x[1], reverse=True)[:10]
-            if not sorted_users:
-                vk.messages_send(peer_id, "📋 Нет данных для топа")
-                return
-            text = "🏆 **Топ пользователей:**\n\n"
-            for i, (uid, points) in enumerate(sorted_users, 1):
-                link = await get_user_link(int(uid))
-                text += f"{i}. {link} - {points} монет\n"
-            vk.messages_send(peer_id, text)
-            return
-        
-        # --- ПИНГ ---
+        # === ПИНГ ===
         if command == "пинг":
             start = time.time()
             vk.users_get(GROUP_ID)
             latency = int((time.time() - start) * 1000)
-            vk.messages_send(peer_id, f"🏓 Понг! {latency} мс")
+            await vk.messages_send(peer_id, f"🏓 Понг! {latency} мс")
             return
         
-        # --- КУБИК ---
+        # === ВРЕМЯ ===
+        if command == "время":
+            now = datetime.now()
+            await vk.messages_send(peer_id, f"🕐 {now.strftime('%H:%M:%S')}\n📅 {now.strftime('%d.%m.%Y')}")
+            return
+        
+        # === БАЛАНС ===
+        if command == "баланс":
+            money = await get_money(user_id)
+            await vk.messages_send(peer_id, f"💰 Ваш баланс: {money} монет")
+            return
+        
+        # === БОНУС ===
+        if command == "бонус":
+            last_bonus = data.get("daily_bonus", {}).get(str(user_id), 0)
+            now = time.time()
+            if now - last_bonus < 86400:
+                remaining = int(86400 - (now - last_bonus))
+                hours = remaining // 3600
+                minutes = (remaining % 3600) // 60
+                await vk.messages_send(peer_id, f"⏳ Бонус доступен через {hours}ч {minutes}м")
+                return
+            bonus = random.randint(1000, 10000)
+            await add_money(user_id, bonus)
+            data["daily_bonus"][str(user_id)] = now
+            save_data(data)
+            await vk.messages_send(peer_id, f"🎁 Ежедневный бонус: {bonus} монет!")
+            return
+        
+        # === ПЕРЕДАТЬ ===
+        if command == "передать":
+            if len(args) < 3:
+                await vk.messages_send(peer_id, "❌ !передать [ID] [сумма]")
+                return
+            try:
+                target_id = int(args[1])
+                amount = int(args[2])
+                if target_id == user_id:
+                    await vk.messages_send(peer_id, "❌ Нельзя передать себе!")
+                    return
+                if amount <= 0:
+                    await vk.messages_send(peer_id, "❌ Сумма должна быть положительной!")
+                    return
+                if not await remove_money(user_id, amount):
+                    await vk.messages_send(peer_id, f"❌ Недостаточно монет!")
+                    return
+                await add_money(target_id, amount)
+                target_link = await get_user_link(target_id)
+                await vk.messages_send(peer_id, f"✅ Передано {amount} монет {target_link}")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !передать [ID] [сумма]")
+            return
+        
+        # === РАБОТА ===
+        if command == "работа":
+            jobs = ["Программист", "Дизайнер", "Менеджер", "Копирайтер", "Маркетолог"]
+            if str(user_id) in data.get("work", {}):
+                job = data["work"][str(user_id)]
+                await vk.messages_send(peer_id, f"💼 Вы работаете {job['name']}")
+                return
+            job_name = random.choice(jobs)
+            data["work"][str(user_id)] = {"name": job_name, "start": time.time()}
+            save_data(data)
+            await vk.messages_send(peer_id, f"✅ Вы устроились на работу {job_name}!")
+            return
+        
+        # === ЗАРПЛАТА ===
+        if command == "зарплата":
+            if str(user_id) not in data.get("work", {}):
+                await vk.messages_send(peer_id, "❌ Вы не работаете! !работа")
+                return
+            work = data["work"][str(user_id)]
+            hours = (time.time() - work["start"]) / 3600
+            if hours < 2:
+                remaining = int((2 - hours) * 60)
+                await vk.messages_send(peer_id, f"⏳ Работайте еще {remaining} минут")
+                return
+            salary = int(500 * hours)
+            await add_money(user_id, salary)
+            data["work"][str(user_id)]["start"] = time.time()
+            save_data(data)
+            await vk.messages_send(peer_id, f"💰 Зарплата: {salary} монет!")
+            return
+        
+        # === МАГАЗИН ===
+        if command == "магазин":
+            shop = data.get("shop", {})
+            if not shop:
+                await vk.messages_send(peer_id, "❌ Магазин пуст!")
+                return
+            text = "🛒 **Магазин:**\n\n"
+            for category, items in shop.items():
+                text += f"**{category}**\n"
+                for item in items["items"]:
+                    text += f"• {item['name']} - {item['price']} монет\n"
+                    text += f"  {item['desc']}\n"
+                text += "\n"
+            text += "Используйте !купить [ID товара]"
+            await vk.messages_send(peer_id, text)
+            return
+        
+        # === КУПИТЬ ===
+        if command == "купить":
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !купить [ID товара]")
+                return
+            item_id = args[1]
+            found = None
+            for category, items in data.get("shop", {}).items():
+                for item in items["items"]:
+                    if item["id"] == item_id:
+                        found = item
+                        break
+                if found:
+                    break
+            if not found:
+                await vk.messages_send(peer_id, "❌ Товар не найден!")
+                return
+            if not await remove_money(user_id, found["price"]):
+                await vk.messages_send(peer_id, f"❌ Недостаточно монет! Нужно {found['price']}")
+                return
+            if "inventory" not in data:
+                data["inventory"] = {}
+            if str(user_id) not in data["inventory"]:
+                data["inventory"][str(user_id)] = []
+            data["inventory"][str(user_id)].append(found["id"])
+            save_data(data)
+            await vk.messages_send(peer_id, f"✅ Вы купили {found['name']}!")
+            return
+        
+        # === ИНВЕНТАРЬ ===
+        if command == "инвентарь":
+            if str(user_id) not in data.get("inventory", {}):
+                await vk.messages_send(peer_id, "📭 Ваш инвентарь пуст")
+                return
+            items = data["inventory"][str(user_id)]
+            text = "🎒 **Инвентарь:**\n\n"
+            for item_id in items:
+                for category, cat_items in data.get("shop", {}).items():
+                    for item in cat_items["items"]:
+                        if item["id"] == item_id:
+                            text += f"• {item['name']}\n"
+            await vk.messages_send(peer_id, text)
+            return
+        
+        # === КАЗИНО ===
+        if command == "казино":
+            if len(args) < 2 or not args[1].isdigit():
+                await vk.messages_send(peer_id, "❌ !казино [сумма]")
+                return
+            amount = int(args[1])
+            if not await remove_money(user_id, amount):
+                await vk.messages_send(peer_id, f"❌ Недостаточно монет!")
+                return
+            multiplier = random.choice([0, 0.5, 1, 2, 3, 5])
+            result = int(amount * multiplier)
+            await add_money(user_id, result)
+            if result > amount:
+                await vk.messages_send(peer_id, f"🎉 Вы выиграли {result} монет! (+{result-amount})")
+            elif result == amount:
+                await vk.messages_send(peer_id, f"🤝 Ваша ставка вернулась")
+            else:
+                await vk.messages_send(peer_id, f"😢 Вы проиграли {amount-result} монет")
+            return
+        
+        # === КУБИК ===
         if command == "кубик":
             sides = 6
             if len(args) > 1 and args[1].isdigit():
                 sides = min(max(int(args[1]), 2), 100)
             result = random.randint(1, sides)
-            vk.messages_send(peer_id, f"🎲 {result} (1-{sides})")
+            await vk.messages_send(peer_id, f"🎲 {result} (1-{sides})")
             return
         
-        # --- МОНЕТКА ---
+        # === МОНЕТКА ===
         if command == "монетка":
             result = random.choice(["🦅 Орёл", "🪙 Решка"])
-            vk.messages_send(peer_id, f"{result}")
+            await vk.messages_send(peer_id, f"{result}")
             return
         
-        # --- БАЛАНС ---
-        if command == "баланс":
-            points = data.get("points", {}).get(str(user_id), 0)
-            vk.messages_send(peer_id, f"💰 Ваш баланс: {points} монет")
+        # === ШАР ===
+        if command == "шар":
+            answers = ["Определённо да", "Без сомнения", "Вероятно", "Да",
+                       "Нет", "Не сейчас", "Возможно", "Спроси позже",
+                       "Туманно", "Абсолютно нет", "Точно да", "Очень сомнительно"]
+            await vk.messages_send(peer_id, f"🔮 {random.choice(answers)}")
             return
         
-        # --- ЕЖЕДНЕВНЫЙ ---
-        if command == "ежедневный":
-            if "points" not in data:
-                data["points"] = {}
-            bonus = random.randint(50, 150)
-            data["points"][str(user_id)] = data["points"].get(str(user_id), 0) + bonus
+        # === ШУТКА ===
+        if command == "шутка":
+            jokes = [
+                "Почему программисты путают Хэллоуин и Рождество? 31 OCT = 25 DEC",
+                "Сколько программистов нужно, чтобы заменить лампочку? Ни одного",
+                "Как назвать медведя без ушей? Без-ушный",
+                "Что говорит один компьютер другому? Давай обменяемся вирусами!"
+            ]
+            await vk.messages_send(peer_id, f"😂 {random.choice(jokes)}")
+            return
+        
+        # === БРАК ===
+        if command == "брак":
+            if len(args) < 2:
+                if str(user_id) in data.get("marriage", {}):
+                    spouse_id = data["marriage"][str(user_id)]
+                    spouse_link = await get_user_link(spouse_id)
+                    await vk.messages_send(peer_id, f"💑 Вы в браке с {spouse_link}")
+                else:
+                    await vk.messages_send(peer_id, "❌ Вы не в браке")
+                return
+            target_id = int(args[1])
+            if target_id == user_id:
+                await vk.messages_send(peer_id, "❌ Нельзя жениться на себе!")
+                return
+            if str(user_id) in data.get("marriage", {}):
+                await vk.messages_send(peer_id, "❌ Вы уже в браке!")
+                return
+            if str(target_id) in data.get("marriage", {}):
+                await vk.messages_send(peer_id, "❌ Пользователь уже в браке!")
+                return
+            target_link = await get_user_link(target_id)
+            await vk.messages_send(peer_id, f"💍 {user_link_text} предлагает брак {target_link}!\nНапишите !да или !нет")
+            data["marriage_proposal"] = {"from": user_id, "to": target_id}
             save_data(data)
-            vk.messages_send(peer_id, f"🎁 Бонус: {bonus} монет")
+            return
+        
+        # === ДА (принятие брака) ===
+        if command == "да":
+            if "marriage_proposal" in data:
+                proposal = data["marriage_proposal"]
+                if proposal["to"] == user_id:
+                    if "marriage" not in data:
+                        data["marriage"] = {}
+                    data["marriage"][str(proposal["from"])] = proposal["to"]
+                    data["marriage"][str(proposal["to"])] = proposal["from"]
+                    del data["marriage_proposal"]
+                    save_data(data)
+                    from_link = await get_user_link(proposal["from"])
+                    to_link = await get_user_link(proposal["to"])
+                    await vk.messages_send(peer_id, f"💑 {from_link} и {to_link} теперь муж и жена!")
+                else:
+                    await vk.messages_send(peer_id, "❌ Вам не предлагали брак")
+            return
+        
+        # === НЕТ (отказ от брака) ===
+        if command == "нет":
+            if "marriage_proposal" in data:
+                proposal = data["marriage_proposal"]
+                if proposal["to"] == user_id:
+                    del data["marriage_proposal"]
+                    save_data(data)
+                    await vk.messages_send(peer_id, "❌ Брак отклонен")
+            return
+        
+        # === РАЗВОД ===
+        if command == "развод":
+            if str(user_id) not in data.get("marriage", {}):
+                await vk.messages_send(peer_id, "❌ Вы не в браке!")
+                return
+            spouse_id = data["marriage"][str(user_id)]
+            del data["marriage"][str(user_id)]
+            del data["marriage"][str(spouse_id)]
+            save_data(data)
+            spouse_link = await get_user_link(spouse_id)
+            await vk.messages_send(peer_id, f"💔 {user_link_text} и {spouse_link} развелись!")
+            return
+        
+        # === РЕПУТАЦИЯ ===
+        if command == "реп":
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !реп [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                if target_id == user_id:
+                    await vk.messages_send(peer_id, "❌ Нельзя дать репутацию себе!")
+                    return
+                if "rep" not in data:
+                    data["rep"] = {}
+                data["rep"][str(target_id)] = data["rep"].get(str(target_id), 0) + 1
+                save_data(data)
+                target_link = await get_user_link(target_id)
+                await vk.messages_send(peer_id, f"⭐ {target_link} +1 репутация!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !реп [ID]")
+            return
+        
+        # === АФК ===
+        if command == "афк":
+            reason = " ".join(args[1:]) if len(args) > 1 else "Не беспокоить"
+            if "afk_users" not in data:
+                data["afk_users"] = {}
+            data["afk_users"][str(user_id)] = {"time": time.time(), "reason": reason}
+            save_data(data)
+            await vk.messages_send(peer_id, f"🔇 AFK: {reason}")
+            return
+        
+        # === НЕ_АФК ===
+        if command == "не_афк":
+            if str(user_id) in data.get("afk_users", {}):
+                del data["afk_users"][str(user_id)]
+                save_data(data)
+                await vk.messages_send(peer_id, "🔊 Вы снова активны!")
+            else:
+                await vk.messages_send(peer_id, "ℹ️ Вы не были AFK")
+            return
+        
+        # === МУТ ===
+        if command == "мут":
+            if not is_mod(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !мут [ID] [минут]")
+                return
+            try:
+                target_id = int(args[1])
+                minutes = int(args[2]) if len(args) > 2 else 5
+                data["muted"][str(target_id)] = time.time() + (minutes * 60)
+                save_data(data)
+                target_link = await get_user_link(target_id)
+                await vk.messages_send(peer_id, f"🔇 {target_link} заглушен на {minutes} минут!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !мут [ID] [минут]")
+            return
+        
+        # === РАЗМУТ ===
+        if command == "размут":
+            if not is_mod(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !размут [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                if str(target_id) in data.get("muted", {}):
+                    del data["muted"][str(target_id)]
+                    save_data(data)
+                    target_link = await get_user_link(target_id)
+                    await vk.messages_send(peer_id, f"✅ {target_link} размучен!")
+                else:
+                    await vk.messages_send(peer_id, "❌ Пользователь не заглушен!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !размут [ID]")
+            return
+        
+        # === КИК ===
+        if command == "кик":
+            if not is_mod(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !кик [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                if not is_chat:
+                    await vk.messages_send(peer_id, "❌ Команда только в чатах!")
+                    return
+                chat_id = peer_id - 2000000000
+                target_link = await get_user_link(target_id)
+                result = vk.messages_remove_chat_user(chat_id, target_id)
+                if "error" not in result:
+                    await vk.messages_send(peer_id, f"👢 {target_link} кикнут!")
+                else:
+                    await vk.messages_send(peer_id, "❌ Не удалось кикнуть!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !кик [ID]")
+            return
+        
+        # === ВАРН ===
+        if command == "варн":
+            if not is_mod(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !варн [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                if "warns" not in data:
+                    data["warns"] = {}
+                data["warns"][str(target_id)] = data["warns"].get(str(target_id), 0) + 1
+                warns = data["warns"][str(target_id)]
+                save_data(data)
+                target_link = await get_user_link(target_id)
+                if warns >= 3:
+                    data["muted"][str(target_id)] = time.time() + (60 * 60)
+                    save_data(data)
+                    await vk.messages_send(peer_id, f"⚠️ {target_link} получил 3 предупреждения! Заглушен на час!")
+                else:
+                    await vk.messages_send(peer_id, f"⚠️ {target_link} предупреждение {warns}/3")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !варн [ID]")
+            return
+        
+        # === БАН ===
+        if command == "бан":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !бан [ID] [дней]")
+                return
+            try:
+                target_id = int(args[1])
+                days = int(args[2]) if len(args) > 2 else 7
+                data["banned"][str(target_id)] = time.time() + (days * 24 * 60 * 60)
+                save_data(data)
+                target_link = await get_user_link(target_id)
+                await vk.messages_send(peer_id, f"🚫 {target_link} забанен на {days} дней!")
+                if is_chat:
+                    chat_id = peer_id - 2000000000
+                    vk.messages_remove_chat_user(chat_id, target_id)
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !бан [ID] [дней]")
+            return
+        
+        # === РАЗБАН ===
+        if command == "разбан":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !разбан [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                if str(target_id) in data.get("banned", {}):
+                    del data["banned"][str(target_id)]
+                    save_data(data)
+                    target_link = await get_user_link(target_id)
+                    await vk.messages_send(peer_id, f"✅ {target_link} разбанен!")
+                else:
+                    await vk.messages_send(peer_id, "❌ Пользователь не забанен!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка! !разбан [ID]")
+            return
+        
+        # === ОЧИСТИТЬ ===
+        if command == "очистить":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            count = 20
+            if len(args) > 1 and args[1].isdigit():
+                count = min(int(args[1]), 100)
+            await vk.messages_send(peer_id, f"🧹 Очищено {count} сообщений (демонстрация)")
+            return
+        
+        # === ПРАВИЛА ===
+        if command == "правила":
+            rules = data["settings"].get("rules", "Правила не установлены")
+            await vk.messages_send(peer_id, f"📋 **Правила чата:**\n{rules}")
+            return
+        
+        # === ПРИВЕТСТВИЕ ===
+        if command == "приветствие":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                current = data["settings"].get("welcome", "Не установлено")
+                await vk.messages_send(peer_id, f"Текущее приветствие: {current}")
+                return
+            welcome_text = " ".join(args[1:])
+            data["settings"]["welcome"] = welcome_text
+            save_data(data)
+            await vk.messages_send(peer_id, f"✅ Приветствие установлено!")
+            return
+        
+        # === АДМИНЫ ===
+        if command == "админы":
+            admins = data.get("admins", {})
+            if not admins:
+                await vk.messages_send(peer_id, "📋 Нет администраторов")
+                return
+            text = "👑 **Администраторы:**\n\n"
+            for aid in admins:
+                link = await get_user_link(int(aid))
+                text += f"• {link}\n"
+            await vk.messages_send(peer_id, text)
+            return
+        
+        # === ДОБАВИТЬ_АДМИНА ===
+        if command == "добавить_админа":
+            if not is_owner(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !добавить_админа [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                data["admins"][str(target_id)] = True
+                save_data(data)
+                target_link = await get_user_link(target_id)
+                await vk.messages_send(peer_id, f"✅ {target_link} добавлен в администраторы!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка!")
+            return
+        
+        # === УДАЛИТЬ_АДМИНА ===
+        if command == "удалить_админа":
+            if not is_owner(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !удалить_админа [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                if str(target_id) in data.get("admins", {}):
+                    del data["admins"][str(target_id)]
+                    save_data(data)
+                    target_link = await get_user_link(target_id)
+                    await vk.messages_send(peer_id, f"✅ {target_link} удален из администраторов!")
+                else:
+                    await vk.messages_send(peer_id, "❌ Пользователь не администратор!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка!")
+            return
+        
+        # === ДОБАВИТЬ_МОДА ===
+        if command == "добавить_мода":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !добавить_мода [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                data["mods"][str(target_id)] = True
+                save_data(data)
+                target_link = await get_user_link(target_id)
+                await vk.messages_send(peer_id, f"✅ {target_link} добавлен в модераторы!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка!")
+            return
+        
+        # === УДАЛИТЬ_МОДА ===
+        if command == "удалить_мода":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !удалить_мода [ID]")
+                return
+            try:
+                target_id = int(args[1])
+                if str(target_id) in data.get("mods", {}):
+                    del data["mods"][str(target_id)]
+                    save_data(data)
+                    target_link = await get_user_link(target_id)
+                    await vk.messages_send(peer_id, f"✅ {target_link} удален из модераторов!")
+                else:
+                    await vk.messages_send(peer_id, "❌ Пользователь не модератор!")
+            except:
+                await vk.messages_send(peer_id, "❌ Ошибка!")
+            return
+        
+        # === НАСТРОЙКИ ===
+        if command == "настройки":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            settings = data.get("settings", {})
+            text = (
+                f"⚙️ **Настройки:**\n\n"
+                f"Антиспам: {'✅' if settings.get('antispam', True) else '❌'}\n"
+                f"Лимит спама: {settings.get('spam_limit', 3)} за {settings.get('spam_time', 5)}с\n"
+                f"Антиссылки: {'✅' if settings.get('antilink', True) else '❌'}\n"
+                f"Антифлуд: {'✅' if settings.get('antiflood', True) else '❌'}\n"
+                f"Медленный режим: {'✅' if settings.get('slow_mode', False) else '❌'}\n"
+                f"Приветствие: {settings.get('welcome', 'Не установлено')[:30]}..."
+            )
+            await vk.messages_send(peer_id, text)
+            return
+        
+        # === АНТИСПАМ ===
+        if command == "антиспам":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !антиспам [вкл/выкл]")
+                return
+            if args[1].lower() in ["вкл", "on", "да"]:
+                data["settings"]["antispam"] = True
+                await vk.messages_send(peer_id, "✅ Антиспам включен!")
+            elif args[1].lower() in ["выкл", "off", "нет"]:
+                data["settings"]["antispam"] = False
+                await vk.messages_send(peer_id, "❌ Антиспам выключен!")
+            else:
+                await vk.messages_send(peer_id, "❌ !антиспам [вкл/выкл]")
+                return
+            save_data(data)
+            return
+        
+        # === АНТИССЫЛКИ ===
+        if command == "антиссылки":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !антиссылки [вкл/выкл]")
+                return
+            if args[1].lower() in ["вкл", "on", "да"]:
+                data["settings"]["antilink"] = True
+                await vk.messages_send(peer_id, "✅ Антиссылки включены!")
+            elif args[1].lower() in ["выкл", "off", "нет"]:
+                data["settings"]["antilink"] = False
+                await vk.messages_send(peer_id, "❌ Антиссылки выключены!")
+            else:
+                await vk.messages_send(peer_id, "❌ !антиссылки [вкл/выкл]")
+                return
+            save_data(data)
+            return
+        
+        # === МЕДЛЕННЫЙ ===
+        if command == "медленный":
+            if not is_admin(user_id):
+                await vk.messages_send(peer_id, f"❌ {user_link_text}, у вас нет прав!")
+                return
+            if len(args) < 2:
+                await vk.messages_send(peer_id, "❌ !медленный [вкл/выкл]")
+                return
+            if args[1].lower() in ["вкл", "on", "да"]:
+                data["settings"]["slow_mode"] = True
+                await vk.messages_send(peer_id, "✅ Медленный режим включен!")
+            elif args[1].lower() in ["выкл", "off", "нет"]:
+                data["settings"]["slow_mode"] = False
+                await vk.messages_send(peer_id, "❌ Медленный режим выключен!")
+            else:
+                await vk.messages_send(peer_id, "❌ !медленный [вкл/выкл]")
+                return
+            save_data(data)
             return
         
     except Exception as e:
@@ -610,10 +1192,10 @@ async def process_message(message_data: dict):
 start_time = time.time()
 
 async def main():
-    logger.info("🚀 CHAT MANAGER BOT START")
-    logger.info(f"Group: {GROUP_ID}")
+    logger.info("🚀 PERFECT BOT VK 2026 START")
+    logger.info(f"👥 Group: {GROUP_ID}")
+    logger.info(f"👑 Owner: {data.get('owner', 1118563484)}")
     
-    # Проверка токена
     try:
         info = vk.groups_get_by_id()
         if "error" in info:
@@ -624,7 +1206,6 @@ async def main():
         logger.error(f"Error: {e}")
         return
     
-    # Получаем Long Poll
     lp_info = vk.get_long_poll_server()
     if "error" in lp_info:
         logger.error(f"Long Poll error: {lp_info['error']}")
@@ -642,21 +1223,14 @@ async def main():
         server = 'https://' + server
     
     logger.info(f"📡 Server: {server}")
-    logger.info(f"🔑 Key: {key[:20]}...")
-    logger.info(f"🕐 TS: {ts}")
-    
     logger.info("✅ BOT READY")
-    logger.info("💀 Commands: !помощь")
-    
-    last_message_id = 0
+    logger.info("💀 Commands: !помощь или !старт (для активации)")
     
     while True:
         try:
             response = vk.long_poll_request(server, key, ts)
             
-            # Логируем ответ Long Poll
             if "failed" in response:
-                logger.warning(f"Long Poll failed: {response['failed']}")
                 if response["failed"] == 1:
                     ts = response.get("ts", ts)
                     continue
@@ -673,17 +1247,10 @@ async def main():
             ts = response.get("ts", ts)
             updates = response.get("updates", [])
             
-            if updates:
-                logger.info(f"📨 Updates: {len(updates)}")
-            
             for update in updates:
                 try:
-                    # Обрабатываем только новые сообщения
                     if update.get("type") == "message_new":
                         await process_message(update)
-                    else:
-                        # Логируем другие типы обновлений
-                        logger.info(f"ℹ️ Other update: {update.get('type', 'unknown')}")
                 except Exception as e:
                     logger.error(f"Update error: {e}")
                     
