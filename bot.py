@@ -51,8 +51,7 @@ def load_data() -> Dict[str, Any]:
             "spam_enabled": False,
             "spam_interval": 1,
             "last_spam": {},
-            "spam_intensity": 1,
-            "last_message_id": 0
+            "spam_intensity": 1
         }
 
 def save_data(data: Dict[str, Any]):
@@ -94,15 +93,6 @@ class VKGroupAPI:
             "peer_id": peer_id,
             "message": message,
             "random_id": int(time.time() * 1000) + random.randint(1, 99999)
-        })
-    
-    def messages_get(self, count: int = 20, offset: int = 0) -> Dict:
-        """Получение сообщений через API (альтернативный метод)"""
-        return self._request("messages.get", {
-            "count": count,
-            "offset": offset,
-            "preview_length": 0,
-            "extended": 1
         })
     
     def groups_get_by_id(self) -> Dict:
@@ -156,9 +146,17 @@ async def send_spam(peer_id: int):
 
 async def process_message(message_data: dict):
     try:
-        peer_id = message_data.get("peer_id", 0)
-        user_id = message_data.get("from_id", 0)
-        text = message_data.get("text", "")
+        # Новый формат сообщений от группы
+        if "object" in message_data and "message" in message_data["object"]:
+            msg = message_data["object"]["message"]
+            peer_id = msg.get("peer_id", 0)
+            user_id = msg.get("from_id", 0)
+            text = msg.get("text", "")
+        else:
+            # Старый формат
+            peer_id = message_data.get("peer_id", 0)
+            user_id = message_data.get("from_id", 0)
+            text = message_data.get("text", "")
         
         logger.info(f"Message from {user_id}: {text[:30]}")
         
@@ -229,7 +227,6 @@ async def main():
         logger.error(f"Error: {e}")
         return
     
-    # Пытаемся получить Long Poll
     lp_info = vk.get_long_poll_server()
     if "error" in lp_info:
         logger.error(f"Long Poll error: {lp_info['error']}")
@@ -253,19 +250,7 @@ async def main():
     logger.info("BOT READY")
     logger.info("Commands: !помощь")
     
-    # Сначала получаем последние сообщения через API
-    try:
-        messages = vk.messages_get(count=1)
-        if "error" not in messages and messages.get("items"):
-            last_msg = messages["items"][0]
-            data["last_message_id"] = last_msg.get("id", 0)
-            save_data(data)
-            logger.info(f"Last message ID: {data['last_message_id']}")
-    except Exception as e:
-        logger.error(f"Get messages error: {e}")
-    
-    last_message_id = data.get("last_message_id", 0)
-    empty_count = 0
+    last_message_id = 0
     
     while True:
         try:
@@ -290,44 +275,15 @@ async def main():
             updates = response.get("updates", [])
             
             if updates:
-                empty_count = 0
                 logger.info(f"Updates: {len(updates)}")
-            else:
-                empty_count += 1
-                if empty_count % 20 == 0:
-                    logger.info(f"Waiting for messages... ({empty_count} empty)")
-                    # Периодически обновляем Long Poll сервер
-                    if empty_count > 50:
-                        logger.info("Refreshing Long Poll server...")
-                        lp_info = vk.get_long_poll_server()
-                        if "error" not in lp_info:
-                            server = lp_info.get("server")
-                            key = lp_info.get("key")
-                            ts = lp_info.get("ts")
-                            if server and not server.startswith(('http://', 'https://')):
-                                server = 'https://' + server
-                        empty_count = 0
             
             for update in updates:
                 try:
-                    if not isinstance(update, list) or len(update) < 1:
-                        continue
+                    logger.info(f"Update type: {update.get('type', 'unknown')}")
                     
-                    if update[0] == 4:
-                        if len(update) < 2:
-                            continue
-                        message_data = update[1]
-                        if not isinstance(message_data, dict):
-                            continue
-                        
-                        message_id = message_data.get("id", 0)
-                        if message_id <= last_message_id:
-                            continue
-                        last_message_id = message_id
-                        data["last_message_id"] = last_message_id
-                        save_data(data)
-                        
-                        await process_message(message_data)
+                    # Обрабатываем только новые сообщения
+                    if update.get("type") == "message_new":
+                        await process_message(update)
                     
                 except Exception as e:
                     logger.error(f"Update error: {e}")
