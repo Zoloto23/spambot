@@ -150,24 +150,27 @@ async def process_message(message_data: dict):
         user_id = message_data.get("from_id", 0)
         text = message_data.get("text", "")
         
-        # Пропускаем сообщения от бота
+        logger.info(f"Message from {user_id} to {peer_id}: {text[:30]}")
+        
         if user_id < 0:
             return
         
-        # Проверяем команды (работают и в личке, и в чате)
         if text.startswith(PREFIX):
             command = text[1:].strip().lower()
+            logger.info(f"Command: {command}")
             
             if command == "спам вкл":
                 data["spam_enabled"] = True
                 save_data(data)
                 vk.messages_send(peer_id, "SPAM ON")
+                logger.info("Spam turned ON")
                 return
             
             if command == "спам выкл":
                 data["spam_enabled"] = False
                 save_data(data)
                 vk.messages_send(peer_id, "SPAM OFF")
+                logger.info("Spam turned OFF")
                 return
             
             if command.startswith("интервал "):
@@ -198,7 +201,6 @@ async def process_message(message_data: dict):
                     "!помощь - Help")
                 return
         
-        # Спам только в чатах (не в личке)
         if peer_id != user_id:
             await send_spam(peer_id)
             
@@ -228,6 +230,10 @@ async def main():
     key = lp_info.get("key")
     ts = lp_info.get("ts")
     
+    logger.info(f"Server: {server}")
+    logger.info(f"Key: {key[:10]}...")
+    logger.info(f"TS: {ts}")
+    
     if not server:
         logger.error("No server")
         return
@@ -244,7 +250,10 @@ async def main():
         try:
             response = vk.long_poll_request(server, key, ts)
             
+            logger.info(f"Long Poll response: {str(response)[:200]}")
+            
             if "failed" in response:
+                logger.warning(f"Long Poll failed: {response['failed']}")
                 if response["failed"] == 1:
                     ts = response.get("ts", ts)
                     continue
@@ -261,8 +270,12 @@ async def main():
             ts = response.get("ts", ts)
             updates = response.get("updates", [])
             
+            logger.info(f"Updates count: {len(updates)}")
+            
             for update in updates:
                 try:
+                    logger.info(f"Update: {update}")
+                    
                     if not isinstance(update, list) or len(update) < 1:
                         continue
                     
