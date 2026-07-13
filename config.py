@@ -14,6 +14,9 @@ RP_IMAGES_CONFIG = {
     "обнять": [
         "https://i.pinimg.com/736x/b7/34/b1/b734b111a8567a31fd181dd458c08414.jpg"
     ],
+    "поцеловать": [
+        "https://i.pinimg.com/736x/2d/bf/18/2dbf18b3e07281b88d03a674f7c11cc5.jpg"
+    ],
     "ударить": [
         "https://i.pinimg.com/736x/5d/73/2f/5d732f6444c8f3c0fcaf16c507be4c26.jpg"
     ],
@@ -26,14 +29,8 @@ RP_IMAGES_CONFIG = {
     "толкнуть": [
         "https://i.pinimg.com/736x/8a/7b/6c/8a7b6c5d4e3f2g1h2i3j4k5l6m7n8o9p.jpg"
     ],
-    "обнять за шею": [
-        "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
-    ],
-    "взять за руку": [
-        "https://i.pinimg.com/736x/1x/2y/3z/1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m.jpg"
-    ],
-    "обнять за талию": [
-        "https://i.pinimg.com/736x/2y/3z/4a/2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m7n.jpg"
+    "поцеловать в губы": [
+        "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
     ],
     "поцеловать в щеку": [
         "https://i.pinimg.com/736x/9v/0w/1x/9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j4k.jpg"
@@ -41,11 +38,11 @@ RP_IMAGES_CONFIG = {
     "поцеловать в лоб": [
         "https://i.pinimg.com/736x/8u/9v/0w/8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j.jpg"
     ],
-    "поцеловать в губы": [
-        "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
+    "взять за руку": [
+        "https://i.pinimg.com/736x/1x/2y/3z/1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m.jpg"
     ],
-    "поцеловать руку": [
-        "https://i.pinimg.com/736x/0w/1x/2y/0w1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l.jpg"
+    "обнять за талию": [
+        "https://i.pinimg.com/736x/2y/3z/4a/2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m7n.jpg"
     ],
     "прижать к себе": [
         "https://i.pinimg.com/736x/4g/5h/6i/4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v.jpg"
@@ -53,14 +50,8 @@ RP_IMAGES_CONFIG = {
     "погладить по голове": [
         "https://i.pinimg.com/736x/4a/5b/6c/4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o9p.jpg"
     ],
-    "задушить в объятиях": [
-        "https://i.pinimg.com/736x/5h/6i/7j/5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w.jpg"
-    ],
-    "потискать": [
-        "https://i.pinimg.com/736x/3f/4g/5h/3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u.jpg"
-    ],
-    "облизать": [
-        "https://i.pinimg.com/736x/2e/3f/4g/2e3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t.jpg"
+    "обнять за шею": [
+        "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
     ],
 }
 
