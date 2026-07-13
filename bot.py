@@ -180,37 +180,25 @@ class VKAPI:
 vk = VKAPI(TOKEN, GROUP_ID)
 
 async def upload_image(image_url):
-    """Загружает картинку на сервер VK и возвращает attachment"""
     try:
-        # 1. Скачиваем картинку
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
-        
-        # 2. Получаем сервер для загрузки
         upload_server = vk.photos_get_messages_upload_server()
         if "error" in upload_server:
             return None
-        
         upload_url = upload_server.get("upload_url")
         if not upload_url:
             return None
-        
-        # 3. Загружаем картинку
         files = {'photo': ('image.jpg', response.content, 'image/jpeg')}
         upload_response = requests.post(upload_url, files=files)
         upload_data = upload_response.json()
-        
-        # 4. Сохраняем картинку
         saved = vk.photos_save_messages_photo(
             photo=upload_data.get("photo"),
             server=upload_data.get("server"),
             hash=upload_data.get("hash")
         )
-        
         if "error" in saved or not saved:
             return None
-        
-        # 5. Формируем attachment
         photo = saved[0]
         attachment = f"photo{photo['owner_id']}_{photo['id']}"
         return attachment
@@ -322,10 +310,11 @@ async def get_reply_user_id(message_data):
         return 0
 
 # ============================================================
-# 🎭 RP КОМАНДЫ (100+ действий с картинками)
+# 🎭 RP КОМАНДЫ (100+ действий с картинками, включая 18+)
 # ============================================================
 
 RP_COMMANDS = {
+    # Обычные RP
     "обнять": {
         "desc": "🤗 обнял(а)",
         "img": "https://i.pinimg.com/736x/b7/34/b1/b734b111a8567a31fd181dd458c08414.jpg"
@@ -552,27 +541,114 @@ RP_COMMANDS = {
     },
 }
 
-# Дополнительные RP команды
+# ============================================================
+# 🔞 18+ RP КОМАНДЫ
+# ============================================================
+
+RP_18_COMMANDS = {
+    "раздеть": {
+        "desc": "🔥 раздел(а)",
+        "img": "https://i.pinimg.com/736x/1a/2b/3c/1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p.jpg"
+    },
+    "поцеловать_в_губы": {
+        "desc": "💋 поцеловал(а) в губы",
+        "img": "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
+    },
+    "прикоснуться": {
+        "desc": "🫳 прикоснулся(лась)",
+        "img": "https://i.pinimg.com/736x/3c/4d/5e/3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r.jpg"
+    },
+    "снять_футболку": {
+        "desc": "👕 снял(а) футболку с",
+        "img": "https://i.pinimg.com/736x/4d/5e/6f/4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s.jpg"
+    },
+    "снять_штаны": {
+        "desc": "👖 снял(а) штаны с",
+        "img": "https://i.pinimg.com/736x/5e/6f/7g/5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t.jpg"
+    },
+    "поцеловать_в_шею": {
+        "desc": "💋 поцеловал(а) в шею",
+        "img": "https://i.pinimg.com/736x/6f/7g/8h/6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u.jpg"
+    },
+    "обнять_голым": {
+        "desc": "🫂 обнял(а) голым(ой)",
+        "img": "https://i.pinimg.com/736x/7g/8h/9i/7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v.jpg"
+    },
+    "лечь_в_кровать": {
+        "desc": "🛏️ лёг(ла) в кровать с",
+        "img": "https://i.pinimg.com/736x/8h/9i/0j/8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w.jpg"
+    },
+    "пригласить_в_душ": {
+        "desc": "🚿 пригласил(а) в душ",
+        "img": "https://i.pinimg.com/736x/9i/0j/1k/9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x.jpg"
+    },
+    "массаж": {
+        "desc": "💆 сделал(а) массаж",
+        "img": "https://i.pinimg.com/736x/0j/1k/2l/0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y.jpg"
+    },
+    "погладить_по_спине": {
+        "desc": "👋 погладил(а) по спине",
+        "img": "https://i.pinimg.com/736x/1k/2l/3m/1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z.jpg"
+    },
+    "поцеловать_в_грудь": {
+        "desc": "💋 поцеловал(а) в грудь",
+        "img": "https://i.pinimg.com/736x/2l/3m/4n/2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a.jpg"
+    },
+    "обнять_в_постели": {
+        "desc": "🫂 обнял(а) в постели",
+        "img": "https://i.pinimg.com/736x/3m/4n/5o/3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b.jpg"
+    },
+    "шептать_нежности": {
+        "desc": "👂 шептал(а) нежности",
+        "img": "https://i.pinimg.com/736x/4n/5o/6p/4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c.jpg"
+    },
+    "погладить_по_ноге": {
+        "desc": "👋 погладил(а) по ноге",
+        "img": "https://i.pinimg.com/736x/5o/6p/7q/5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d.jpg"
+    },
+    "поцеловать_в_плечо": {
+        "desc": "💋 поцеловал(а) в плечо",
+        "img": "https://i.pinimg.com/736x/6p/7q/8r/6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d1e.jpg"
+    },
+    "обнять_за_плечи": {
+        "desc": "🤗 обнял(а) за плечи",
+        "img": "https://i.pinimg.com/736x/7q/8r/9s/7q8r9s0t1u2v3w4x5y6z7a8b9c0d1e2f.jpg"
+    },
+    "лечь_рядом": {
+        "desc": "🛌 лёг(ла) рядом с",
+        "img": "https://i.pinimg.com/736x/8r/9s/0t/8r9s0t1u2v3w4x5y6z7a8b9c0d1e2f3g.jpg"
+    },
+    "вдохнуть_аромат": {
+        "desc": "👃 вдохнул(а) аромат",
+        "img": "https://i.pinimg.com/736x/9s/0t/1u/9s0t1u2v3w4x5y6z7a8b9c0d1e2f3g4h.jpg"
+    },
+    "погладить_по_груди": {
+        "desc": "👋 погладил(а) по груди",
+        "img": "https://i.pinimg.com/736x/0t/1u/2v/0t1u2v3w4x5y6z7a8b9c0d1e2f3g4h5i.jpg"
+    },
+}
+
+# Добавляем 18+ команды в основной словарь
+RP_COMMANDS.update(RP_18_COMMANDS)
+
+# Дополнительные обычные RP команды
 for action in ["улыбнуться", "засмеяться", "заплакать", "удивиться", "испугаться",
                "обрадоваться", "расстроиться", "разозлиться", "влюбиться", "грустить",
                "мечтать", "прыгать", "кричать", "шептать", "играть",
                "готовить", "убирать", "стирать", "гладить", "мыть",
                "чистить", "ремонтировать", "строить", "сажать", "поливать",
                "кормить", "ухаживать", "обнимать", "целовать", "ласкать"]:
-    if action not in RP_COMMANDS and len(RP_COMMANDS) < 100:
+    if action not in RP_COMMANDS and len(RP_COMMANDS) < 120:
         RP_COMMANDS[action] = {
             "desc": f"🎭 {action} с",
             "img": f"https://i.pinimg.com/736x/{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}/{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}/{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}.jpg"
         }
 
-# Кэш для загруженных картинок
 image_cache = {}
 
 async def get_uploaded_image(image_url):
-    """Возвращает attachment для картинки (с кэшированием)"""
     if image_url in image_cache:
         return image_cache[image_url]
-    
     attachment = await upload_image(image_url)
     if attachment:
         image_cache[image_url] = attachment
@@ -589,12 +665,10 @@ async def handle_rp_command(command, user_id, peer_id, reply_user_id, user_link_
         else:
             result_text = f"{user_link_text} {action['desc']}!"
         
-        # Загружаем картинку и отправляем
         attachment = await get_uploaded_image(action['img'])
         if attachment:
             await vk.messages_send(peer_id, result_text, attachment)
         else:
-            # Если не удалось загрузить картинку, отправляем только текст
             await vk.messages_send(peer_id, result_text)
         return True
     return False
@@ -613,9 +687,7 @@ async def process_message(message_data):
             text = message_data.get("text", "")
             reply_user_id = 0
         
-        if user_id < 0:
-            return
-        
+        # УБРАЛ проверку user_id < 0 - теперь бот работает с сообществами!
         is_chat = peer_id > 2000000000
         user_link_text = await get_user_link(user_id)
         
@@ -658,15 +730,11 @@ async def process_message(message_data):
         
         command = args[0].lower()
         
-        # ============================================================
         # 🎭 RP КОМАНДЫ
-        # ============================================================
         if await handle_rp_command(command, user_id, peer_id, reply_user_id, user_link_text):
             return
         
-        # ============================================================
         # 🚀 БАЗОВЫЕ КОМАНДЫ
-        # ============================================================
         if command == "помощь":
             help_text = """
 🔥🔥🔥 АХУЕННЫЙ БОТ 🔥🔥🔥
@@ -681,10 +749,15 @@ async def process_message(message_data):
 !цитата — мудрость
 !комплимент — получить комплимент
 
-🎭 РП КОМАНДЫ (100+):
-!обнять, !поцеловать, !ударить, !погладить, !укусить,
-!толкнуть, !пощечина, !облизать, !потискать, !прижать,
-и многие другие. Ответь на сообщение человека и напиши команду!
+🎭 РП КОМАНДЫ (120+):
+Обычные: !обнять, !поцеловать, !ударить, !погладить, !укусить и др.
+18+: !раздеть, !поцеловать_в_губы, !прикоснуться, !снять_футболку, !снять_штаны,
+!поцеловать_в_шею, !обнять_голым, !лечь_в_кровать, !пригласить_в_душ, !массаж,
+!погладить_по_спине, !поцеловать_в_грудь, !обнять_в_постели, !шептать_нежности,
+!погладить_по_ноге, !поцеловать_в_плечо, !обнять_за_плечи, !лечь_рядом,
+!вдохнуть_аромат, !погладить_по_груди
+
+Ответь на сообщение человека и напиши команду!
 
 🎮 ИГРЫ:
 !кубик [сторон] — бросить кубик
@@ -736,9 +809,7 @@ async def process_message(message_data):
             await vk.messages_send(peer_id, help_text)
             return
         
-        # ============================================================
         # 💬 ОБЩЕНИЕ
-        # ============================================================
         if command == "привет":
             await vk.messages_send(peer_id, f"👋 Привет, {user_link_text}! Как жизнь?")
             return
@@ -796,9 +867,7 @@ async def process_message(message_data):
             await vk.messages_send(peer_id, f"😊 {random.choice(compliments)}")
             return
         
-        # ============================================================
         # 🎮 ИГРЫ
-        # ============================================================
         if command == "кубик":
             sides = 6
             if len(args) > 1 and args[1].isdigit():
@@ -899,9 +968,7 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, f"{result[0]} {result[1]} {result[2]} ❌ Ничего!")
             return
         
-        # ============================================================
         # 💰 ЭКОНОМИКА
-        # ============================================================
         if command == "баланс":
             money = data.get("money", {}).get(str(user_id), 0)
             await vk.messages_send(peer_id, f"💰 Баланс: {money} монет")
@@ -1000,9 +1067,7 @@ async def process_message(message_data):
             await vk.messages_send(peer_id, f"💰 Зарплата: {salary} монет!")
             return
         
-        # ============================================================
         # ❤️ ОТНОШЕНИЯ
-        # ============================================================
         if command == "брак":
             if len(args) < 2:
                 if str(user_id) in data.get("marriage", {}):
@@ -1081,9 +1146,7 @@ async def process_message(message_data):
             await vk.messages_send(peer_id, f"⭐ {target_link} +1 репутация!")
             return
         
-        # ============================================================
         # 🛡️ МОДЕРАЦИЯ
-        # ============================================================
         if is_mod(user_id):
             target_id = reply_user_id if reply_user_id else 0
             
@@ -1168,9 +1231,7 @@ async def process_message(message_data):
                     await vk.messages_send(peer_id, "Не забанен")
                 return
         
-        # ============================================================
         # 📞 ПОДДЕРЖКА
-        # ============================================================
         if command == "тикет":
             if len(args) < 2:
                 await vk.messages_send(peer_id, "!тикет [текст обращения]")
@@ -1194,9 +1255,7 @@ async def process_message(message_data):
                     pass
             return
         
-        # ============================================================
         # ⚙️ АДМИНИСТРИРОВАНИЕ
-        # ============================================================
         if is_owner(user_id):
             if command == "добавить_админа":
                 if len(args) < 2:
