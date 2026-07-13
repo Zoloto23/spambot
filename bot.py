@@ -144,97 +144,13 @@ class VKAPI:
 vk = VKAPI(TOKEN, USER_TOKEN, GROUP_ID)
 
 # ============================================================
-# 📸 РАБОЧИЕ КАРТИНКИ (с нормальных сайтов)
+# 📸 ЗАГРУЗКА ФОТО ИЗ data.json В VK
 # ============================================================
-
-RP_IMAGE_URLS = {
-    "обнять": [
-        "https://i.pinimg.com/736x/b7/34/b1/b734b111a8567a31fd181dd458c08414.jpg",
-        "https://media1.tenor.com/m/5N5K7xN5N5MAAAAC/hug.gif"
-    ],
-    "поцеловать": [
-        "https://i.pinimg.com/736x/2d/bf/18/2dbf18b3e07281b88d03a674f7c11cc5.jpg",
-        "https://media1.tenor.com/m/8xL8xL8xL8xAAAAC/kiss.gif"
-    ],
-    "ударить": [
-        "https://i.pinimg.com/736x/5d/73/2f/5d732f6444c8f3c0fcaf16c507be4c26.jpg"
-    ],
-    "погладить": [
-        "https://i.pinimg.com/736x/6a/2d/8f/6a2d8f3d7c4e5f6g7h8i9j0k1l2m3n4o5.jpg"
-    ],
-    "укусить": [
-        "https://i.pinimg.com/736x/4f/3e/2d/4f3e2d1c2b3a4f5e6d7c8b9a0f1e2d3c.jpg"
-    ],
-    "толкнуть": [
-        "https://i.pinimg.com/736x/8a/7b/6c/8a7b6c5d4e3f2g1h2i3j4k5l6m7n8o9p.jpg"
-    ],
-    "покусать": [
-        "https://i.pinimg.com/736x/4d/5e/6f/4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s.jpg"
-    ],
-    "чмок": [
-        "https://i.pinimg.com/736x/2d/bf/18/2dbf18b3e07281b88d03a674f7c11cc5.jpg"
-    ],
-    "обнять за шею": [
-        "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
-    ],
-    "поцеловать в губы": [
-        "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
-    ],
-    "поцеловать в щеку": [
-        "https://i.pinimg.com/736x/9v/0w/1x/9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j4k.jpg"
-    ],
-    "взять за руку": [
-        "https://i.pinimg.com/736x/1x/2y/3z/1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m.jpg"
-    ],
-    "прижать к себе": [
-        "https://i.pinimg.com/736x/4g/5h/6i/4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v.jpg"
-    ],
-    "погладить по голове": [
-        "https://i.pinimg.com/736x/4a/5b/6c/4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o9p.jpg"
-    ],
-    "задушить в объятиях": [
-        "https://i.pinimg.com/736x/5h/6i/7j/5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w.jpg"
-    ],
-    "потискать": [
-        "https://i.pinimg.com/736x/3f/4g/5h/3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u.jpg"
-    ],
-    "облизать": [
-        "https://i.pinimg.com/736x/2e/3f/4g/2e3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t.jpg"
-    ],
-    "поцеловать руку": [
-        "https://i.pinimg.com/736x/0w/1x/2y/0w1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l.jpg"
-    ],
-    "обнять сзади": [
-        "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
-    ],
-    "шепнуть на ухо": [
-        "https://i.pinimg.com/736x/3z/4a/5b/3z4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o.jpg"
-    ],
-    "раздеть": [
-        "https://i.pinimg.com/736x/1a/2b/3c/1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p.jpg"
-    ],
-    "массаж": [
-        "https://i.pinimg.com/736x/0j/1k/2l/0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y.jpg"
-    ],
-    "поцеловать в шею": [
-        "https://i.pinimg.com/736x/6f/7g/8h/6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u.jpg"
-    ],
-    "лечь в кровать": [
-        "https://i.pinimg.com/736x/8h/9i/0j/8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w.jpg"
-    ],
-    "пригласить в душ": [
-        "https://i.pinimg.com/736x/9i/0j/1k/9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x.jpg"
-    ],
-    "поцеловать в лоб": [
-        "https://i.pinimg.com/736x/8u/9v/0w/8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j.jpg"
-    ]
-}
 
 def upload_photo_to_vk(image_url):
     try:
-        # Добавляем User-Agent чтобы обойти блокировку
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         r = requests.get(image_url, timeout=10, headers=headers)
         r.raise_for_status()
@@ -266,26 +182,31 @@ def upload_photo_to_vk(image_url):
         logger.error(f"Upload error: {e}")
         return None
 
-def preload_all_images():
-    """Загружает все картинки при старте"""
-    logger.info("📸 Загрузка картинок...")
-    total = 0
+def preload_images_from_data():
+    """Загружает все картинки из data.json в VK"""
+    logger.info("📸 Загрузка картинок из data.json...")
     
-    for cmd, urls in RP_IMAGE_URLS.items():
+    images_data = data.get("rp_images", {})
+    if not images_data:
+        logger.warning("⚠️ Нет картинок в data.json!")
+        return
+    
+    total = 0
+    for cmd, urls in images_data.items():
         attachments = []
         for url in urls:
             att = upload_photo_to_vk(url)
             if att:
                 attachments.append(att)
+                logger.info(f"✅ {cmd} → фото загружено")
         if attachments:
             data["rp_images"][cmd] = attachments
             total += len(attachments)
-            logger.info(f"✅ {cmd} → {len(attachments)} фото")
         else:
-            logger.warning(f"⚠️ {cmd} → 0 фото")
+            logger.warning(f"⚠️ {cmd} → не загрузилось")
     
     save_data(data)
-    logger.info(f"🎉 Загружено {total} картинок")
+    logger.info(f"🎉 Загружено {total} картинок!")
 
 def get_reply_info(msg):
     try:
@@ -468,7 +389,7 @@ async def process_message(message_data):
         command = text[1:].strip().lower()
         
         # ============================================================
-        # 🎭 RP КОМАНДЫ
+        # 🎭 RP КОМАНДЫ (ТЕКСТ + ФОТО)
         # ============================================================
         if command in RP_ACTIONS:
             if reply_user_id and reply_user_id != user_id:
@@ -485,6 +406,7 @@ async def process_message(message_data):
             else:
                 result_text = f"{user_name} {action_desc} {target_name}!"
             
+            # Берем фото из data.json
             images = data.get("rp_images", {}).get(command, [])
             if images:
                 attachment = random.choice(images)
@@ -551,10 +473,10 @@ async def main():
     logger.info(f"Group: {GROUP_ID}")
     logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
     
-    if not USER_TOKEN:
-        logger.warning("⚠️ VK_TOKEN не добавлен! Картинки НЕ ЗАГРУЗЯТСЯ!")
+    if USER_TOKEN:
+        preload_images_from_data()
     else:
-        preload_all_images()
+        logger.warning("⚠️ VK_TOKEN не добавлен! Картинки НЕ ЗАГРУЗЯТСЯ!")
     
     try:
         info = vk.groups_get_by_id()
