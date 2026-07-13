@@ -15,19 +15,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = os.environ.get("VK_GROUP_TOKEN")
+TOKEN = os.environ.get("VK_TOKEN")
 GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
 
 if not TOKEN:
-    logger.error("VK_GROUP_TOKEN not set")
-    raise RuntimeError("VK_GROUP_TOKEN not set")
+    logger.error("VK_TOKEN not set")
+    raise RuntimeError("VK_TOKEN not set")
 
 if not GROUP_ID:
     logger.error("VK_GROUP_ID not set")
     raise RuntimeError("VK_GROUP_ID not set")
 
 API_VERSION = "5.199"
-PREFIX = "!"
 
 DATA_FILE = "rp_bot_data.json"
 
@@ -40,6 +39,7 @@ def load_data():
             "owner": 1118563484,
             "admins": {},
             "mods": {},
+            "nicks": {},
             "settings": {
                 "antispam": True,
                 "spam_limit": 3,
@@ -65,6 +65,9 @@ def user_link(user_id, name=None):
         return f"[id{user_id}|Пользователь]"
     return f"[id{user_id}|{name}]"
 
+def get_nick(user_id):
+    return data.get("nicks", {}).get(str(user_id), None)
+
 class VKAPI:
     def __init__(self, token, group_id, version="5.199"):
         self.token = token
@@ -89,15 +92,18 @@ class VKAPI:
             logger.error(f"Request error: {e}")
             return {"error": {"error_msg": str(e)}}
     
-    def messages_send(self, peer_id, message, attachment=None):
+    def messages_send(self, peer_id, message=None, attachment=None, sticker_id=None):
         params = {
             "peer_id": peer_id,
-            "message": message,
             "random_id": int(time.time() * 1000) + random.randint(1, 99999),
             "disable_mentions": 1
         }
+        if message:
+            params["message"] = message
         if attachment:
             params["attachment"] = attachment
+        if sticker_id:
+            params["sticker_id"] = sticker_id
         return self._request("messages.send", params)
     
     def users_get(self, user_ids):
@@ -121,16 +127,6 @@ class VKAPI:
             logger.error(f"Long Poll error: {e}")
             return {"failed": 1}
     
-    def photos_get_messages_upload_server(self):
-        return self._request("photos.getMessagesUploadServer")
-    
-    def photos_save_messages_photo(self, photo, server, hash):
-        return self._request("photos.saveMessagesPhoto", {
-            "photo": photo,
-            "server": server,
-            "hash": hash
-        })
-    
     def photos_get(self, owner_id, album_id, count=100):
         return self._request("photos.get", {
             "owner_id": owner_id,
@@ -141,36 +137,33 @@ class VKAPI:
 
 vk = VKAPI(TOKEN, GROUP_ID)
 
-async def get_album_photos(album_id):
-    """Получает все фото из альбома ВК с описаниями"""
-    owner_id = -GROUP_ID
-    result = vk.photos_get(owner_id, album_id, 200)
-    if "error" in result:
-        logger.error(f"Album error: {result['error']}")
-        return {}
-    
-    photos = {}
-    for photo in result.get("items", []):
-        text = photo.get("text", "").strip().lower()
-        if text:
-            # Поддерживаем несколько команд в описании через запятую
-            for cmd in text.split(","):
-                cmd = cmd.strip()
-                if cmd:
-                    attachment = f"photo{photo['owner_id']}_{photo['id']}"
-                    photos[cmd] = attachment
-                    logger.info(f"Loaded RP command: {cmd}")
-    return photos
-
 RP_IMAGES = {}
 
 async def load_rp_images():
     global RP_IMAGES
+    owner_id = -GROUP_ID
     album_id = "311514872"
-    RP_IMAGES = await get_album_photos(album_id)
-    logger.info(f"Loaded {len(RP_IMAGES)} RP images from album")
+    
+    result = vk.photos_get(owner_id, album_id, 200)
+    if "error" in result:
+        logger.error(f"Album error: {result['error']}")
+        return
+    
+    for photo in result.get("items", []):
+        text = photo.get("text", "").strip().lower()
+        if text:
+            for cmd in text.split(","):
+                cmd = cmd.strip()
+                if cmd:
+                    attachment = f"photo{photo['owner_id']}_{photo['id']}"
+                    RP_IMAGES[cmd] = attachment
+                    logger.info(f"Loaded RP: {cmd}")
 
-# Словарь соответствий: ключ - команда, значение - текст действия
+STICKER_COMMANDS = {
+    "сама": 100,      # Замени на ID стикера
+    "бот": 101,       # Замени на ID стикера
+}
+
 RP_ACTIONS = {
     "обнять": "обнял(а)",
     "поцеловать": "поцеловал(а)",
@@ -271,8 +264,14 @@ async def get_user_name(user_id):
     except:
         return f"ID {user_id}"
 
-async def get_user_link(user_id):
-    name = await get_user_name(user_id)
+async def get_display_name(user_id):
+    nick = get_nick(user_id)
+    if nick:
+        return nick
+    return await get_user_name(user_id)
+
+async def get_display_link(user_id):
+    name = await get_display_name(user_id)
     return user_link(user_id, name)
 
 def is_owner(user_id):
@@ -346,25 +345,6 @@ async def get_reply_user_id(message_data):
     except:
         return 0
 
-async def handle_rp_command(command, user_id, peer_id, reply_user_id, user_link_text):
-    # Ищем команду в словаре (с пробелами, как вводит пользователь)
-    if command in RP_ACTIONS:
-        target_id = reply_user_id if reply_user_id else user_id
-        user_name = await get_user_name(user_id)
-        target_name = await get_user_name(target_id)
-        
-        action_desc = RP_ACTIONS[command]
-        result_text = f"{user_name} {action_desc} {target_name}!"
-        
-        # Проверяем, есть ли картинка в альбоме
-        attachment = RP_IMAGES.get(command)
-        if attachment:
-            await vk.messages_send(peer_id, result_text, attachment)
-        else:
-            await vk.messages_send(peer_id, result_text)
-        return True
-    return False
-
 async def process_message(message_data):
     try:
         if "object" in message_data and "message" in message_data["object"]:
@@ -379,14 +359,15 @@ async def process_message(message_data):
             text = message_data.get("text", "")
             reply_user_id = 0
         
-        user_link_text = await get_user_link(user_id)
+        if user_id < 0:
+            return
         
         if is_banned(user_id, peer_id):
             return
         
         if is_muted(user_id, peer_id):
             try:
-                await vk.messages_send(peer_id, f"🔇 Вы заглушены! Не пишите.")
+                await vk.messages_send(peer_id, "🔇 Вы заглушены!")
             except:
                 pass
             return
@@ -397,7 +378,7 @@ async def process_message(message_data):
         
         if peer_id > 2000000000:
             if await check_links(text) and not is_mod(user_id):
-                await vk.messages_send(peer_id, f"🔗 Ссылки запрещены!")
+                await vk.messages_send(peer_id, "🔗 Ссылки запрещены!")
                 return
             
             if await check_spam(user_id, peer_id) and not is_mod(user_id):
@@ -407,35 +388,104 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, f"🚫 Заглушен на {mute_time} минут за спам!")
                 return
         
-        if not text.startswith(PREFIX):
+        if not text:
             return
         
-        # Убираем префикс и получаем команду целиком (с пробелами)
-        command = text[1:].strip().lower()
+        # Убираем префикс: теперь бот реагирует на любое сообщение без префикса
+        command = text.strip().lower()
         
-        # 🎭 RP КОМАНДЫ
-        if await handle_rp_command(command, user_id, peer_id, reply_user_id, user_link_text):
+        # Проверяем команды
+        if command == "сама":
+            await vk.messages_send(peer_id, sticker_id=STICKER_COMMANDS["сама"])
             return
         
-        # Если команда не найдена — игнорируем
+        if command == "бот":
+            await vk.messages_send(peer_id, sticker_id=STICKER_COMMANDS["бот"])
+            return
+        
+        # Проверяем RP команды (обнять, поцеловать и т.д.)
+        if command in RP_ACTIONS:
+            target_id = reply_user_id if reply_user_id else user_id
+            user_name = await get_display_link(user_id)
+            target_name = await get_display_link(target_id)
+            action_desc = RP_ACTIONS[command]
+            
+            result_text = f"{user_name} {action_desc} {target_name}!"
+            
+            attachment = RP_IMAGES.get(command)
+            if attachment:
+                await vk.messages_send(peer_id, result_text, attachment=attachment)
+            else:
+                await vk.messages_send(peer_id, result_text)
+            return
+        
+        # Команда для установки ника (доступна всем)
+        if command.startswith("ник "):
+            new_nick = command[4:].strip()
+            if len(new_nick) > 30:
+                await vk.messages_send(peer_id, "❌ Ник не более 30 символов!")
+                return
+            if len(new_nick) < 2:
+                await vk.messages_send(peer_id, "❌ Ник не менее 2 символов!")
+                return
+            data["nicks"][str(user_id)] = new_nick
+            save_data(data)
+            await vk.messages_send(peer_id, f"✅ Ваш ник установлен: {new_nick}")
+            return
+        
+        # Снять ник (доступно всем)
+        if command == "снять ник":
+            if str(user_id) in data.get("nicks", {}):
+                del data["nicks"][str(user_id)]
+                save_data(data)
+                await vk.messages_send(peer_id, "✅ Ваш ник снят")
+            else:
+                await vk.messages_send(peer_id, "❌ У вас нет ника")
+            return
+        
+        # Помощь
+        if command == "помощь":
+            help_text = """
+🎭 RP БОТ
+
+Доступные команды:
+обнять, поцеловать, ударить, погладить, укусить
+толкнуть, обнять за шею, поцеловать в губы
+поцеловать в щеку, поцеловать в лоб, взять за руку
+обнять за талию, прижать к себе, погладить по голове
+и многие другие...
+
+📌 Чтобы применить к пользователю:
+Ответь на его сообщение и напиши команду
+
+🎯 Стикеры:
+сама, бот
+
+📛 Ник:
+ник [текст] — установить ник
+снять ник — снять ник
+
+📸 Картинки из альбома сообщества
+"""
+            await vk.messages_send(peer_id, help_text)
+            return
         
     except Exception as e:
         logger.error(f"Process error: {e}")
 
 async def main():
-    global RP_IMAGES
-    logger.info("🚀 RP БОТ ЗАПУЩЕН")
+    logger.info("🚀 RP BOT STARTED")
     logger.info(f"Group: {GROUP_ID}")
     
-    # Загружаем картинки из альбома
     await load_rp_images()
+    logger.info(f"Loaded {len(RP_IMAGES)} RP images")
     
     try:
         info = vk.groups_get_by_id()
         if "error" in info:
             logger.error(f"Token error: {info['error']}")
             return
-        logger.info("✅ Токен работает")
+        logger.info("Token OK")
     except Exception as e:
         logger.error(f"Error: {e}")
         return
@@ -456,9 +506,9 @@ async def main():
     if not server.startswith(('http://', 'https://')):
         server = 'https://' + server
     
-    logger.info("✅ БОТ ГОТОВ")
-    logger.info("💀 Команды: ответь на сообщение и напиши действие")
-    logger.info("📸 Картинки из альбома: https://vk.com/album-240201978_311514872")
+    logger.info("BOT READY")
+    logger.info("Commands: обнять, поцеловать, ник, сама, бот, помощь")
+    logger.info("Photos: https://vk.com/album-240201978_311514872")
     
     while True:
         try:
