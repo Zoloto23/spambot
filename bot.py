@@ -144,19 +144,16 @@ class VKAPI:
 vk = VKAPI(TOKEN, USER_TOKEN, GROUP_ID)
 
 def upload_photo(photo_url):
-    """Загружает фото на сервер VK используя пользовательский токен"""
     try:
         r = requests.get(photo_url, timeout=10)
         r.raise_for_status()
         
         server = vk.photos_get_messages_upload_server()
         if "error" in server:
-            logger.error(f"Upload server error: {server}")
             return None
         
         url = server.get("upload_url")
         if not url:
-            logger.error("No upload url")
             return None
         
         files = {'photo': ('image.jpg', r.content, 'image/jpeg')}
@@ -170,7 +167,6 @@ def upload_photo(photo_url):
         )
         
         if "error" in saved or not saved:
-            logger.error(f"Save photo error: {saved}")
             return None
         
         p = saved[0]
@@ -180,7 +176,6 @@ def upload_photo(photo_url):
         return None
 
 def get_photos_from_msg(msg):
-    """Извлекает фото из сообщения"""
     photos = []
     if not msg:
         return photos
@@ -503,7 +498,7 @@ async def process_message(message_data):
             return
         
         # ============================================================
-        # RP КОМАНДЫ
+        # RP КОМАНДЫ (АВТОМАТИЧЕСКИ ПРИМЕНЯЮТСЯ)
         # ============================================================
         if command in RP_ACTIONS:
             target_id = reply_user_id if reply_user_id else user_id
@@ -513,12 +508,17 @@ async def process_message(message_data):
             
             result_text = f"{user_name} {action_desc} {target_name}!"
             
+            # Проверяем есть ли загруженные фото для этой команды
             images = data.get("rp_images", {}).get(command, [])
             if images:
+                # Берём случайное фото из загруженных
                 attachment = random.choice(images)
                 vk.messages_send(peer_id, result_text, attachment=attachment)
+                logger.info(f"✅ RP команда '{command}' выполнена с фото")
             else:
+                # Если фото нет — отправляем без фото
                 vk.messages_send(peer_id, result_text)
+                logger.info(f"ℹ️ RP команда '{command}' выполнена без фото")
             return
         
         # ============================================================
