@@ -47,7 +47,7 @@ def load_data():
             },
             "message_history": {},
             "user_stats": {},
-            "rp_images": {}  # {команда: photo_attachment}
+            "rp_images": {}
         }
 
 def save_data(data):
@@ -143,11 +143,9 @@ vk = VKAPI(TOKEN, GROUP_ID)
 async def upload_image_to_vk(image_url):
     """Загружает картинку на сервер VK и возвращает attachment"""
     try:
-        # Скачиваем картинку
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         
-        # Получаем сервер для загрузки
         upload_server = vk.photos_get_messages_upload_server()
         if "error" in upload_server:
             return None
@@ -156,12 +154,10 @@ async def upload_image_to_vk(image_url):
         if not upload_url:
             return None
         
-        # Загружаем картинку
         files = {'photo': ('image.jpg', response.content, 'image/jpeg')}
         upload_response = requests.post(upload_url, files=files)
         upload_data = upload_response.json()
         
-        # Сохраняем картинку
         saved = vk.photos_save_messages_photo(
             photo=upload_data.get("photo"),
             server=upload_data.get("server"),
@@ -435,7 +431,7 @@ async def process_message(message_data):
             
             # Проверяем, что команда существует
             if rp_cmd not in RP_ACTIONS:
-                await vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена в списке RP команд")
+                await vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена")
                 return
             
             # Проверяем, есть ли фото в сообщении
@@ -450,11 +446,9 @@ async def process_message(message_data):
                     photo = att.get("photo", {})
                     sizes = photo.get("sizes", [])
                     if sizes:
-                        # Берем самое большое фото
                         largest = max(sizes, key=lambda x: x.get("width", 0) * x.get("height", 0))
                         photo_url = largest.get("url")
                         if photo_url:
-                            # Загружаем фото на сервер VK
                             attachment = await upload_image_to_vk(photo_url)
                             if attachment:
                                 photo_attachment = attachment
@@ -467,7 +461,9 @@ async def process_message(message_data):
             # Сохраняем фото для команды
             data["rp_images"][rp_cmd] = photo_attachment
             save_data(data)
-            await vk.messages_send(peer_id, f"✅ Фото загружено для команды '{rp_cmd}'!")
+            
+            # Отправляем уведомление с фото
+            await vk.messages_send(peer_id, f"✅ Фото загружено для команды '{rp_cmd}'!", attachment=photo_attachment)
             return
         
         # ============================================================
@@ -488,7 +484,6 @@ async def process_message(message_data):
             
             result_text = f"{user_name} {action_desc} {target_name}!"
             
-            # Проверяем, есть ли загруженное фото для команды
             attachment = data.get("rp_images", {}).get(command)
             if attachment:
                 await vk.messages_send(peer_id, result_text, attachment=attachment)
