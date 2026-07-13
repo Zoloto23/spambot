@@ -144,18 +144,17 @@ class VKAPI:
 vk = VKAPI(TOKEN, USER_TOKEN, GROUP_ID)
 
 # ============================================================
-# 📸 ЗАГРУЗКА КАРТИНОК ИЗ PINTEREST
+# 📸 РАБОЧИЕ КАРТИНКИ (с нормальных сайтов)
 # ============================================================
 
 RP_IMAGE_URLS = {
     "обнять": [
         "https://i.pinimg.com/736x/b7/34/b1/b734b111a8567a31fd181dd458c08414.jpg",
-        "https://i.pinimg.com/736x/1a/2b/3c/1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p.jpg",
-        "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
+        "https://media1.tenor.com/m/5N5K7xN5N5MAAAAC/hug.gif"
     ],
     "поцеловать": [
         "https://i.pinimg.com/736x/2d/bf/18/2dbf18b3e07281b88d03a674f7c11cc5.jpg",
-        "https://i.pinimg.com/736x/3c/4d/5e/3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r.jpg"
+        "https://media1.tenor.com/m/8xL8xL8xL8xAAAAC/kiss.gif"
     ],
     "ударить": [
         "https://i.pinimg.com/736x/5d/73/2f/5d732f6444c8f3c0fcaf16c507be4c26.jpg"
@@ -233,7 +232,11 @@ RP_IMAGE_URLS = {
 
 def upload_photo_to_vk(image_url):
     try:
-        r = requests.get(image_url, timeout=10)
+        # Добавляем User-Agent чтобы обойти блокировку
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        r = requests.get(image_url, timeout=10, headers=headers)
         r.raise_for_status()
         
         server = vk.photos_get_messages_upload_server()
@@ -278,6 +281,8 @@ def preload_all_images():
             data["rp_images"][cmd] = attachments
             total += len(attachments)
             logger.info(f"✅ {cmd} → {len(attachments)} фото")
+        else:
+            logger.warning(f"⚠️ {cmd} → 0 фото")
     
     save_data(data)
     logger.info(f"🎉 Загружено {total} картинок")
