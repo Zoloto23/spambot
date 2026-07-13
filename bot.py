@@ -76,8 +76,9 @@ class VKAPI:
         self.base_url = "https://api.vk.com/method/"
         self.version = API_VERSION
     
-    def _request(self, method, params, use_user_token=False):
-        token = self.user_token if use_user_token and self.user_token else self.group_token
+    def _request(self, method, params, token=None):
+        if token is None:
+            token = self.group_token
         params["access_token"] = token
         params["v"] = self.version
         try:
@@ -128,16 +129,19 @@ class VKAPI:
             return {"failed": 1}
     
     def photos_get(self, owner_id, album_id, count=200):
-        """Получение фото из альбома — использует ТОЛЬКО пользовательский токен"""
+        """Получение фото из альбома — ЖЁСТКО использует пользовательский токен"""
         if not self.user_token:
             logger.error("❌ Нет пользовательского токена для фото!")
             return {"error": "No user token"}
-        return self._request("photos.get", {
+        
+        params = {
             "owner_id": owner_id,
             "album_id": album_id,
             "count": count,
             "extended": 1
-        }, use_user_token=True)
+        }
+        # ЖЁСТКО передаём пользовательский токен
+        return self._request("photos.get", params, token=self.user_token)
 
 vk = VKAPI(GROUP_TOKEN, USER_TOKEN, GROUP_ID)
 
