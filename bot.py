@@ -206,6 +206,7 @@ RP_ACTIONS = {
     "обнять": "обнял(а)",
     "чмок": "чмокнул(а)",
     "поцеловать": "поцеловал(а)",
+    "покусать": "покусал(а)",
     "ударить": "ударил(а)",
     "погладить": "погладил(а)",
     "укусить": "укусил(а)",
@@ -393,6 +394,7 @@ async def process_message(message_data):
             if isinstance(reply, dict):
                 reply_user_id = reply.get("from_id", 0)
                 reply_msg = reply
+                logger.info(f"📩 Ответ на сообщение от пользователя {reply_user_id}")
         except:
             pass
         
@@ -498,27 +500,38 @@ async def process_message(message_data):
             return
         
         # ============================================================
-        # RP КОМАНДЫ (АВТОМАТИЧЕСКИ ПРИМЕНЯЮТСЯ)
+        # RP КОМАНДЫ (С ФОТО)
         # ============================================================
         if command in RP_ACTIONS:
-            target_id = reply_user_id if reply_user_id else user_id
+            # Определяем цель
+            if reply_user_id and reply_user_id != user_id:
+                # Если есть ответ на чужое сообщение — цель тот, кому ответили
+                target_id = reply_user_id
+                logger.info(f"🎯 Цель: пользователь {target_id} (из ответа)")
+            else:
+                # Если ответа нет или ответ на себя — цель сам пользователь
+                target_id = user_id
+                logger.info(f"🎯 Цель: сам пользователь {target_id}")
+            
             user_name = await get_display_link(user_id)
             target_name = await get_display_link(target_id)
             action_desc = RP_ACTIONS[command]
             
-            result_text = f"{user_name} {action_desc} {target_name}!"
+            if user_id == target_id:
+                # Если цель — сам пользователь
+                result_text = f"{user_name} {action_desc} себя!"
+            else:
+                result_text = f"{user_name} {action_desc} {target_name}!"
             
             # Проверяем есть ли загруженные фото для этой команды
             images = data.get("rp_images", {}).get(command, [])
             if images:
-                # Берём случайное фото из загруженных
                 attachment = random.choice(images)
                 vk.messages_send(peer_id, result_text, attachment=attachment)
-                logger.info(f"✅ RP команда '{command}' выполнена с фото")
+                logger.info(f"✅ RP '{command}' с фото → {target_id}")
             else:
-                # Если фото нет — отправляем без фото
                 vk.messages_send(peer_id, result_text)
-                logger.info(f"ℹ️ RP команда '{command}' выполнена без фото")
+                logger.info(f"ℹ️ RP '{command}' без фото → {target_id}")
             return
         
         # ============================================================
@@ -553,15 +566,18 @@ async def process_message(message_data):
             help_text = """
 🎭 RP БОТ
 
-Команды:
-!обнять, !чмок, !поцеловать, !ударить, !погладить, !укусить
+💬 Команды:
+!обнять, !чмок, !поцеловать, !покусать, !ударить, !погладить, !укусить
 и многие другие...
 
-Загрузка фото:
+📸 Загрузка фото:
 !загрузить [команда] — прикрепи фото
 !загрузить все [команда] — все фото
 
-Ник: !ник [текст], !снять ник
+📌 Чтобы применить к другому пользователю:
+Ответь на его сообщение и напиши команду
+
+📛 Ник: !ник [текст], !снять ник
 """
             vk.messages_send(peer_id, help_text)
             return
@@ -605,6 +621,7 @@ async def main():
     
     logger.info("✅ БОТ ГОТОВ")
     logger.info("💬 !обнять, !чмок, !загрузить")
+    logger.info("📌 Ответь на сообщение + команда — применится к тому, кому ответил")
     
     while True:
         try:
