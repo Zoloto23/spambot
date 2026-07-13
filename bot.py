@@ -16,11 +16,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("VK_GROUP_TOKEN")
+USER_TOKEN = os.environ.get("VK_TOKEN")
 GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
 
 if not TOKEN:
     logger.error("VK_GROUP_TOKEN not set")
     raise RuntimeError("VK_GROUP_TOKEN not set")
+
+if not USER_TOKEN:
+    logger.warning("⚠️ VK_TOKEN not set - картинки из альбома не загрузятся!")
 
 if not GROUP_ID:
     logger.error("VK_GROUP_ID not set")
@@ -49,7 +53,7 @@ def load_data():
             },
             "message_history": {},
             "user_stats": {},
-            "rp_images": {}  # Здесь будут храниться команды и их photo attachments
+            "rp_images": {}
         }
 
 def save_data(data):
@@ -70,16 +74,20 @@ def get_nick(user_id):
     return data.get("nicks", {}).get(str(user_id), None)
 
 class VKAPI:
-    def __init__(self, token, group_id, version="5.199"):
+    def __init__(self, token, user_token, group_id, version="5.199"):
         self.token = token
+        self.user_token = user_token
         self.group_id = group_id
         self.version = version
         self.base_url = "https://api.vk.com/method/"
     
-    def _request(self, method, params=None):
+    def _request(self, method, params=None, use_user_token=False):
         if params is None:
             params = {}
-        params["access_token"] = self.token
+        if use_user_token and self.user_token:
+            params["access_token"] = self.user_token
+        else:
+            params["access_token"] = self.token
         params["v"] = self.version
         try:
             response = requests.post(self.base_url + method, data=params, timeout=10)
@@ -129,14 +137,15 @@ class VKAPI:
             return {"failed": 1}
     
     def photos_get(self, owner_id, album_id, count=200):
+        """Получение фото из альбома (использует пользовательский токен)"""
         return self._request("photos.get", {
             "owner_id": owner_id,
             "album_id": album_id,
             "count": count,
             "extended": 1
-        })
+        }, use_user_token=True)
 
-vk = VKAPI(TOKEN, GROUP_ID)
+vk = VKAPI(TOKEN, USER_TOKEN, GROUP_ID)
 
 # ============================================================
 # 📸 ЗАГРУЗКА КАРТИНОК ИЗ АЛЬБОМА
@@ -144,6 +153,10 @@ vk = VKAPI(TOKEN, GROUP_ID)
 
 async def load_images_from_album():
     """Загружает картинки из альбома ВК по описанию"""
+    if not USER_TOKEN:
+        logger.warning("⚠️ Нет пользовательского токена! Картинки не загрузятся.")
+        return 0
+    
     album_id = "311514872"
     owner_id = -GROUP_ID
     
@@ -155,7 +168,7 @@ async def load_images_from_album():
         return 0
     
     count = 0
-    data["rp_images"] = {}  # Очищаем старые данные
+    data["rp_images"] = {}
     
     for photo in result.get("items", []):
         text = photo.get("text", "").strip().lower()
@@ -270,8 +283,8 @@ RP_ACTIONS = {
 }
 
 STICKER_IDS = {
-    "сама": 100,  # Замени на реальный ID стикера
-    "бот": 101,   # Замени на реальный ID стикера
+    "сама": 100,
+    "бот": 101,
 }
 
 async def get_user_name(user_id):
@@ -413,12 +426,10 @@ async def process_message(message_data):
         
         command = text.strip().lower()
         
-        # 🎯 Стикеры
         if command in STICKER_IDS:
             await vk.messages_send(peer_id, sticker_id=STICKER_IDS[command])
             return
         
-        # 🎭 RP команды
         if command in RP_ACTIONS:
             target_id = reply_user_id if reply_user_id else user_id
             user_name = await get_display_link(user_id)
@@ -427,7 +438,6 @@ async def process_message(message_data):
             
             result_text = f"{user_name} {action_desc} {target_name}!"
             
-            # Берем картинку из загруженного альбома
             images = data.get("rp_images", {}).get(command, [])
             if images:
                 attachment = random.choice(images)
@@ -436,7 +446,6 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, result_text)
             return
         
-        # 📛 Ник (для всех)
         if command.startswith("ник "):
             new_nick = command[4:].strip()
             if len(new_nick) > 30:
@@ -459,7 +468,6 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, "❌ Нет ника")
             return
         
-        # 🆘 Помощь
         if command == "помощь":
             help_text = """
 🎭 **RP БОТ**
