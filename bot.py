@@ -126,13 +126,16 @@ class VKAPI:
             logger.error(f"Request error: {e}")
             return {"error": {"error_msg": str(e)}}
     
-    def messages_send(self, peer_id, message):
-        return self._request("messages.send", {
+    def messages_send(self, peer_id, message, attachment=None):
+        params = {
             "peer_id": peer_id,
             "message": message,
             "random_id": int(time.time() * 1000) + random.randint(1, 99999),
             "disable_mentions": 1
-        })
+        }
+        if attachment:
+            params["attachment"] = attachment
+        return self._request("messages.send", params)
     
     def messages_get_by_id(self, message_ids):
         return self._request("messages.getById", {"message_ids": message_ids})
@@ -163,8 +166,57 @@ class VKAPI:
         except Exception as e:
             logger.error(f"Long Poll error: {e}")
             return {"failed": 1}
+    
+    def photos_get_messages_upload_server(self):
+        return self._request("photos.getMessagesUploadServer")
+    
+    def photos_save_messages_photo(self, photo, server, hash):
+        return self._request("photos.saveMessagesPhoto", {
+            "photo": photo,
+            "server": server,
+            "hash": hash
+        })
 
 vk = VKAPI(TOKEN, GROUP_ID)
+
+async def upload_image(image_url):
+    """Загружает картинку на сервер VK и возвращает attachment"""
+    try:
+        # 1. Скачиваем картинку
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()
+        
+        # 2. Получаем сервер для загрузки
+        upload_server = vk.photos_get_messages_upload_server()
+        if "error" in upload_server:
+            return None
+        
+        upload_url = upload_server.get("upload_url")
+        if not upload_url:
+            return None
+        
+        # 3. Загружаем картинку
+        files = {'photo': ('image.jpg', response.content, 'image/jpeg')}
+        upload_response = requests.post(upload_url, files=files)
+        upload_data = upload_response.json()
+        
+        # 4. Сохраняем картинку
+        saved = vk.photos_save_messages_photo(
+            photo=upload_data.get("photo"),
+            server=upload_data.get("server"),
+            hash=upload_data.get("hash")
+        )
+        
+        if "error" in saved or not saved:
+            return None
+        
+        # 5. Формируем attachment
+        photo = saved[0]
+        attachment = f"photo{photo['owner_id']}_{photo['id']}"
+        return attachment
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        return None
 
 async def get_user_name(user_id):
     try:
@@ -259,7 +311,6 @@ async def check_spam(user_id, peer_id):
     return False
 
 async def get_reply_user_id(message_data):
-    """Получает ID пользователя, которому ответили"""
     try:
         if "object" in message_data and "message" in message_data["object"]:
             msg = message_data["object"]["message"]
@@ -275,7 +326,6 @@ async def get_reply_user_id(message_data):
 # ============================================================
 
 RP_COMMANDS = {
-    # ЭМОЦИИ И ЧУВСТВА
     "обнять": {
         "desc": "🤗 обнял(а)",
         "img": "https://i.pinimg.com/736x/b7/34/b1/b734b111a8567a31fd181dd458c08414.jpg"
@@ -324,7 +374,6 @@ RP_COMMANDS = {
         "desc": "✊ ущипнул(а)",
         "img": "https://i.pinimg.com/736x/6i/7j/8k/6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x.jpg"
     },
-    # ДЕЙСТВИЯ С ПРЕДМЕТАМИ
     "кинуть_камень": {
         "desc": "🪨 кинул(а) камень в",
         "img": "https://i.pinimg.com/736x/7j/8k/9l/7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y.jpg"
@@ -345,7 +394,6 @@ RP_COMMANDS = {
         "desc": "🛏️ забросал(а) подушками",
         "img": "https://i.pinimg.com/736x/1n/2o/3p/1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c.jpg"
     },
-    # ДРУЖЕСКИЕ ДЕЙСТВИЯ
     "дать_пять": {
         "desc": "✋ дал(а) пять",
         "img": "https://i.pinimg.com/736x/2o/3p/4q/2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d.jpg"
@@ -366,7 +414,6 @@ RP_COMMANDS = {
         "desc": "🫡 отдал(а) честь",
         "img": "https://i.pinimg.com/736x/6s/7t/8u/6s7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h.jpg"
     },
-    # РОМАНТИЧЕСКИЕ ДЕЙСТВИЯ
     "обнять_сзади": {
         "desc": "🤗 обнял(а) сзади",
         "img": "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
@@ -399,7 +446,6 @@ RP_COMMANDS = {
         "desc": "👋 погладил(а) по голове",
         "img": "https://i.pinimg.com/736x/4a/5b/6c/4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o9p.jpg"
     },
-    # ЗАБАВНЫЕ ДЕЙСТВИЯ
     "танцевать": {
         "desc": "💃 танцевал(а) с",
         "img": "https://i.pinimg.com/736x/5b/6c/7d/5b6c7d8e9f0g1h2i3j4k5l6m7n8o9p0q.jpg"
@@ -420,7 +466,6 @@ RP_COMMANDS = {
         "desc": "📖 читал(а) стихи",
         "img": "https://i.pinimg.com/736x/9f/0g/1h/9f0g1h2i3j4k5l6m7n8o9p0q1r2s3t4u.jpg"
     },
-    # АГРЕССИВНЫЕ ДЕЙСТВИЯ
     "пнуть": {
         "desc": "🦶 пнул(а)",
         "img": "https://i.pinimg.com/736x/0g/1h/2i/0g1h2i3j4k5l6m7n8o9p0q1r2s3t4u5v.jpg"
@@ -441,7 +486,6 @@ RP_COMMANDS = {
         "desc": "👋 дал(а) подзатыльник",
         "img": "https://i.pinimg.com/736x/4k/5l/6m/4k5l6m7n8o9p0q1r2s3t4u5v6w7x8y9z.jpg"
     },
-    # ЕДА И НАПИТКИ
     "накормить": {
         "desc": "🍕 накормил(а)",
         "img": "https://i.pinimg.com/736x/5l/6m/7n/5l6m7n8o9p0q1r2s3t4u5v6w7x8y9z0a.jpg"
@@ -458,7 +502,6 @@ RP_COMMANDS = {
         "desc": "🍳 приготовил(а) завтрак",
         "img": "https://i.pinimg.com/736x/8o/9p/0q/8o9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d.jpg"
     },
-    # СПОРТ
     "бегать": {
         "desc": "🏃 бегал(а) с",
         "img": "https://i.pinimg.com/736x/9p/0q/1r/9p0q1r2s3t4u5v6w7x8y9z0a1b2c3d4e.jpg"
@@ -475,7 +518,6 @@ RP_COMMANDS = {
         "desc": "💪 качался(лась) с",
         "img": "https://i.pinimg.com/736x/2s/3t/4u/2s3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h.jpg"
     },
-    # ПРИРОДА
     "гулять": {
         "desc": "🚶 гулял(а) с",
         "img": "https://i.pinimg.com/736x/3t/4u/5v/3t4u5v6w7x8y9z0a1b2c3d4e5f6g7h8i.jpg"
@@ -492,7 +534,6 @@ RP_COMMANDS = {
         "desc": "🌊 купался(лась) в реке с",
         "img": "https://i.pinimg.com/736x/6w/7x/8y/6w7x8y9z0a1b2c3d4e5f6g7h8i9j0k1l.jpg"
     },
-    # ПУТЕШЕСТВИЯ
     "лететь": {
         "desc": "✈️ летел(а) с",
         "img": "https://i.pinimg.com/736x/7x/8y/9z/7x8y9z0a1b2c3d4e5f6g7h8i9j0k1l2m.jpg"
@@ -511,7 +552,7 @@ RP_COMMANDS = {
     },
 }
 
-# Дополнительные RP команды (генерируем до 100+)
+# Дополнительные RP команды
 for action in ["улыбнуться", "засмеяться", "заплакать", "удивиться", "испугаться",
                "обрадоваться", "расстроиться", "разозлиться", "влюбиться", "грустить",
                "мечтать", "прыгать", "кричать", "шептать", "играть",
@@ -524,6 +565,19 @@ for action in ["улыбнуться", "засмеяться", "заплакат
             "img": f"https://i.pinimg.com/736x/{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}/{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}/{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.choice('0123456789')}.jpg"
         }
 
+# Кэш для загруженных картинок
+image_cache = {}
+
+async def get_uploaded_image(image_url):
+    """Возвращает attachment для картинки (с кэшированием)"""
+    if image_url in image_cache:
+        return image_cache[image_url]
+    
+    attachment = await upload_image(image_url)
+    if attachment:
+        image_cache[image_url] = attachment
+    return attachment
+
 async def handle_rp_command(command, user_id, peer_id, reply_user_id, user_link_text):
     if command in RP_COMMANDS:
         action = RP_COMMANDS[command]
@@ -535,7 +589,13 @@ async def handle_rp_command(command, user_id, peer_id, reply_user_id, user_link_
         else:
             result_text = f"{user_link_text} {action['desc']}!"
         
-        await vk.messages_send(peer_id, f"{result_text}\n{action['img']}")
+        # Загружаем картинку и отправляем
+        attachment = await get_uploaded_image(action['img'])
+        if attachment:
+            await vk.messages_send(peer_id, result_text, attachment)
+        else:
+            # Если не удалось загрузить картинку, отправляем только текст
+            await vk.messages_send(peer_id, result_text)
         return True
     return False
 
@@ -620,25 +680,11 @@ async def process_message(message_data):
 !шутка — посмеяться
 !цитата — мудрость
 !комплимент — получить комплимент
-!обнять (ответом) — обнять человека
-!поцеловать (ответом) — поцеловать
 
 🎭 РП КОМАНДЫ (100+):
 !обнять, !поцеловать, !ударить, !погладить, !укусить,
 !толкнуть, !пощечина, !облизать, !потискать, !прижать,
-!задушить, !ущипнуть, !кинуть_камень, !полить_водой,
-!кинуть_торт, !облить_соком, !забросать_подушками,
-!дать_пять, !кулак, !пожать_руку, !поклон, !салют,
-!обнять_сзади, !поцеловать_в_лоб, !поцеловать_в_щеку,
-!поцеловать_руку, !взять_за_руку, !приобнять_за_талию,
-!шепнуть_на_ухо, !погладить_по_голове, !танцевать,
-!петь, !играть_на_гитаре, !рисовать, !читать_стихи,
-!пнуть, !ударить_головой, !кинуть_в_стену, !схватить_за_горло,
-!дать_подзатыльник, !накормить, !напоить, !угостить_конфетой,
-!приготовить_завтрак, !бегать, !плавать, !играть_в_футбол,
-!качаться, !гулять, !сидеть_на_траве, !смотреть_на_звёзды,
-!купаться_в_реке, !лететь, !ехать_на_машине, !плыть_на_корабле,
-!идти_в_горы
+и многие другие. Ответь на сообщение человека и напиши команду!
 
 🎮 ИГРЫ:
 !кубик [сторон] — бросить кубик
@@ -686,7 +732,6 @@ async def process_message(message_data):
 
 📌 Чтобы применить команду к пользователю:
 Ответь на его сообщение и напиши команду
-Пример: ответил на сообщение и написал !обнять
 """
             await vk.messages_send(peer_id, help_text)
             return
