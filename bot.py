@@ -8,14 +8,6 @@ import requests
 import re
 from datetime import datetime, timedelta
 
-# Импортируем настройки из config.py
-try:
-    from config import CHMOK_IMAGES, RP_IMAGES_CONFIG, STICKER_IDS
-except ImportError:
-    CHMOK_IMAGES = []
-    RP_IMAGES_CONFIG = {}
-    STICKER_IDS = {"сама": 100, "бот": 101}
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -57,8 +49,7 @@ def load_data():
             },
             "message_history": {},
             "user_stats": {},
-            "rp_images": {},
-            "uploaded_attachments": {}  # Кэш загруженных картинок
+            "rp_images": {}  # Здесь будут храниться команды и их photo attachments
         }
 
 def save_data(data):
@@ -137,114 +128,51 @@ class VKAPI:
             logger.error(f"Long Poll error: {e}")
             return {"failed": 1}
     
-    def photos_get_messages_upload_server(self):
-        return self._request("photos.getMessagesUploadServer")
-    
-    def photos_save_messages_photo(self, photo, server, hash):
-        return self._request("photos.saveMessagesPhoto", {
-            "photo": photo,
-            "server": server,
-            "hash": hash
+    def photos_get(self, owner_id, album_id, count=200):
+        return self._request("photos.get", {
+            "owner_id": owner_id,
+            "album_id": album_id,
+            "count": count,
+            "extended": 1
         })
 
 vk = VKAPI(TOKEN, GROUP_ID)
 
 # ============================================================
-# 📤 ЗАГРУЗКА КАРТИНКИ НА СЕРВЕР VK
+# 📸 ЗАГРУЗКА КАРТИНОК ИЗ АЛЬБОМА
 # ============================================================
 
-async def upload_image_to_vk(image_url):
-    """Загружает картинку на сервер VK и возвращает attachment"""
-    try:
-        # Проверяем кэш
-        if image_url in data.get("uploaded_attachments", {}):
-            return data["uploaded_attachments"][image_url]
-        
-        # 1. Скачиваем картинку
-        response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
-        
-        # 2. Получаем сервер для загрузки
-        upload_server = vk.photos_get_messages_upload_server()
-        if "error" in upload_server:
-            logger.error(f"Upload server error: {upload_server['error']}")
-            return None
-        
-        upload_url = upload_server.get("upload_url")
-        if not upload_url:
-            return None
-        
-        # 3. Загружаем картинку
-        files = {'photo': ('image.jpg', response.content, 'image/jpeg')}
-        upload_response = requests.post(upload_url, files=files)
-        upload_data = upload_response.json()
-        
-        # 4. Сохраняем картинку
-        saved = vk.photos_save_messages_photo(
-            photo=upload_data.get("photo"),
-            server=upload_data.get("server"),
-            hash=upload_data.get("hash")
-        )
-        
-        if "error" in saved or not saved:
-            logger.error(f"Save photo error: {saved}")
-            return None
-        
-        # 5. Формируем attachment
-        photo = saved[0]
-        attachment = f"photo{photo['owner_id']}_{photo['id']}"
-        
-        # Сохраняем в кэш
-        if "uploaded_attachments" not in data:
-            data["uploaded_attachments"] = {}
-        data["uploaded_attachments"][image_url] = attachment
-        save_data(data)
-        
-        return attachment
-    except Exception as e:
-        logger.error(f"Upload error: {e}")
-        return None
-
-# ============================================================
-# 🎯 ЗАГРУЗКА КАРТИНОК ИЗ CONFIG.PY
-# ============================================================
-
-def load_images_from_config():
-    """Загружает картинки из config.py"""
+async def load_images_from_album():
+    """Загружает картинки из альбома ВК по описанию"""
+    album_id = "311514872"
+    owner_id = -GROUP_ID
+    
+    logger.info(f"📸 Загрузка картинок из альбома...")
+    
+    result = vk.photos_get(owner_id, album_id, 200)
+    if "error" in result:
+        logger.error(f"Album error: {result['error']}")
+        return 0
+    
     count = 0
+    data["rp_images"] = {}  # Очищаем старые данные
     
-    if CHMOK_IMAGES:
-        data["rp_images"]["чмок"] = CHMOK_IMAGES
-        count += 1
-        logger.info(f"Loaded {len(CHMOK_IMAGES)} images for 'чмок'")
-    
-    for command, images in RP_IMAGES_CONFIG.items():
-        if images:
-            data["rp_images"][command] = images
-            count += 1
-            logger.info(f"Loaded {len(images)} images for '{command}'")
+    for photo in result.get("items", []):
+        text = photo.get("text", "").strip().lower()
+        if text:
+            for cmd in text.split(","):
+                cmd = cmd.strip()
+                if cmd:
+                    attachment = f"photo{photo['owner_id']}_{photo['id']}"
+                    if cmd not in data["rp_images"]:
+                        data["rp_images"][cmd] = []
+                    data["rp_images"][cmd].append(attachment)
+                    count += 1
+                    logger.info(f"📸 {cmd} → загружено")
     
     save_data(data)
-    logger.info(f"Loaded {count} RP commands from config")
-
-async def get_uploaded_image(command):
-    """Возвращает загруженный attachment для команды (с кэшированием)"""
-    images = data.get("rp_images", {}).get(command, [])
-    if not images:
-        return None
-    
-    if isinstance(images, list):
-        image_url = random.choice(images)
-    else:
-        image_url = images
-    
-    # Проверяем кэш загруженных картинок
-    if image_url in data.get("uploaded_attachments", {}):
-        return data["uploaded_attachments"][image_url]
-    
-    # Загружаем картинку
-    attachment = await upload_image_to_vk(image_url)
-    return attachment
+    logger.info(f"✅ Загружено {count} картинок из альбома")
+    return count
 
 # ============================================================
 # 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
@@ -339,6 +267,11 @@ RP_ACTIONS = {
     "целовать": "целовал(а)",
     "обнимать": "обнимал(а)",
     "ласкать": "ласкал(а)"
+}
+
+STICKER_IDS = {
+    "сама": 100,  # Замени на реальный ID стикера
+    "бот": 101,   # Замени на реальный ID стикера
 }
 
 async def get_user_name(user_id):
@@ -494,9 +427,10 @@ async def process_message(message_data):
             
             result_text = f"{user_name} {action_desc} {target_name}!"
             
-            # Получаем ЗАГРУЖЕННУЮ картинку
-            attachment = await get_uploaded_image(command)
-            if attachment:
+            # Берем картинку из загруженного альбома
+            images = data.get("rp_images", {}).get(command, [])
+            if images:
+                attachment = random.choice(images)
                 await vk.messages_send(peer_id, result_text, attachment=attachment)
             else:
                 await vk.messages_send(peer_id, result_text)
@@ -528,9 +462,9 @@ async def process_message(message_data):
         # 🆘 Помощь
         if command == "помощь":
             help_text = """
-🎭 RP БОТ
+🎭 **RP БОТ**
 
-Доступные команды:
+💬 Доступные команды:
 обнять, чмок, поцеловать, ударить, погладить, укусить
 толкнуть, обнять за шею, поцеловать в губы
 поцеловать в щеку, поцеловать в лоб, взять за руку
@@ -546,6 +480,8 @@ async def process_message(message_data):
 📛 Ник:
 ник [текст] — установить ник
 снять ник — снять ник
+
+📸 Картинки из альбома: https://vk.com/album-240201978_311514872
 """
             await vk.messages_send(peer_id, help_text)
             return
@@ -557,15 +493,15 @@ async def main():
     logger.info("🚀 RP BOT STARTED")
     logger.info(f"Group: {GROUP_ID}")
     
-    # Загружаем картинки из config.py
-    load_images_from_config()
+    # Загружаем картинки из альбома
+    await load_images_from_album()
     
     try:
         info = vk.groups_get_by_id()
         if "error" in info:
             logger.error(f"Token error: {info['error']}")
             return
-        logger.info("Token OK")
+        logger.info("✅ Token OK")
     except Exception as e:
         logger.error(f"Error: {e}")
         return
@@ -586,8 +522,9 @@ async def main():
     if not server.startswith(('http://', 'https://')):
         server = 'https://' + server
     
-    logger.info("BOT READY")
-    logger.info("Commands: обнять, чмок, ник, сама, бот, помощь")
+    logger.info("✅ BOT READY")
+    logger.info("💬 Commands: обнять, чмок, ник, сама, бот, помощь")
+    logger.info("📸 Картинки из альбома: https://vk.com/album-240201978_311514872")
     
     while True:
         try:
