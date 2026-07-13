@@ -6,7 +6,6 @@ import time
 import random
 import requests
 import re
-from datetime import datetime, timedelta
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,23 +14,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = os.environ.get("VK_GROUP_TOKEN")
+GROUP_TOKEN = os.environ.get("VK_GROUP_TOKEN")
 USER_TOKEN = os.environ.get("VK_TOKEN")
 GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
 
-if not TOKEN:
+if not GROUP_TOKEN:
     logger.error("VK_GROUP_TOKEN not set")
     raise RuntimeError("VK_GROUP_TOKEN not set")
-
-if not USER_TOKEN:
-    logger.warning("⚠️ VK_TOKEN not set - картинки из альбома не загрузятся!")
 
 if not GROUP_ID:
     logger.error("VK_GROUP_ID not set")
     raise RuntimeError("VK_GROUP_ID not set")
 
 API_VERSION = "5.199"
-
 DATA_FILE = "rp_bot_data.json"
 
 def load_data():
@@ -74,23 +69,19 @@ def get_nick(user_id):
     return data.get("nicks", {}).get(str(user_id), None)
 
 class VKAPI:
-    def __init__(self, token, user_token, group_id, version="5.199"):
-        self.token = token
+    def __init__(self, group_token, user_token, group_id):
+        self.group_token = group_token
         self.user_token = user_token
         self.group_id = group_id
-        self.version = version
         self.base_url = "https://api.vk.com/method/"
+        self.version = API_VERSION
     
-    def _request(self, method, params=None, use_user_token=False):
-        if params is None:
-            params = {}
-        if use_user_token and self.user_token:
-            params["access_token"] = self.user_token
-        else:
-            params["access_token"] = self.token
+    def _request(self, method, params, use_user_token=False):
+        token = self.user_token if use_user_token and self.user_token else self.group_token
+        params["access_token"] = token
         params["v"] = self.version
         try:
-            response = requests.post(self.base_url + method, data=params, timeout=10)
+            response = requests.post(self.base_url + method, data=params, timeout=15)
             response.raise_for_status()
             result = response.json()
             if "error" in result:
@@ -137,7 +128,10 @@ class VKAPI:
             return {"failed": 1}
     
     def photos_get(self, owner_id, album_id, count=200):
-        """Получение фото из альбома (использует пользовательский токен)"""
+        """Получение фото из альбома — использует ТОЛЬКО пользовательский токен"""
+        if not self.user_token:
+            logger.error("❌ Нет пользовательского токена для фото!")
+            return {"error": "No user token"}
         return self._request("photos.get", {
             "owner_id": owner_id,
             "album_id": album_id,
@@ -145,26 +139,21 @@ class VKAPI:
             "extended": 1
         }, use_user_token=True)
 
-vk = VKAPI(TOKEN, USER_TOKEN, GROUP_ID)
-
-# ============================================================
-# 📸 ЗАГРУЗКА КАРТИНОК ИЗ АЛЬБОМА
-# ============================================================
+vk = VKAPI(GROUP_TOKEN, USER_TOKEN, GROUP_ID)
 
 async def load_images_from_album():
-    """Загружает картинки из альбома ВК по описанию"""
     if not USER_TOKEN:
-        logger.warning("⚠️ Нет пользовательского токена! Картинки не загрузятся.")
+        logger.warning("⚠️ Нет VK_TOKEN! Картинки не загрузятся.")
         return 0
     
     album_id = "311514872"
     owner_id = -GROUP_ID
     
-    logger.info(f"📸 Загрузка картинок из альбома...")
+    logger.info("📸 Загрузка картинок из альбома...")
     
     result = vk.photos_get(owner_id, album_id, 200)
     if "error" in result:
-        logger.error(f"Album error: {result['error']}")
+        logger.error(f"Ошибка альбома: {result['error']}")
         return 0
     
     count = 0
@@ -186,10 +175,6 @@ async def load_images_from_album():
     save_data(data)
     logger.info(f"✅ Загружено {count} картинок из альбома")
     return count
-
-# ============================================================
-# 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
-# ============================================================
 
 RP_ACTIONS = {
     "обнять": "обнял(а)",
@@ -500,9 +485,12 @@ async def process_message(message_data):
 async def main():
     logger.info("🚀 RP BOT STARTED")
     logger.info(f"Group: {GROUP_ID}")
+    logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
     
-    # Загружаем картинки из альбома
-    await load_images_from_album()
+    if USER_TOKEN:
+        await load_images_from_album()
+    else:
+        logger.warning("⚠️ VK_TOKEN не добавлен! Картинки НЕ загрузятся.")
     
     try:
         info = vk.groups_get_by_id()
