@@ -173,10 +173,11 @@ async def download_and_upload_photo(photo_url):
         return None
 
 def get_photos_from_msg(msg):
-    """Извлекает все фото из сообщения (синхронно)"""
+    """Извлекает все фото из сообщения"""
     photos = []
+    if not msg:
+        return photos
     attachments = msg.get("attachments", [])
-    
     for att in attachments:
         if att.get("type") == "photo":
             photo = att.get("photo", {})
@@ -377,25 +378,31 @@ async def check_spam(user_id, peer_id):
     save_data(data)
     return False
 
-async def get_reply_user_id(message_data):
+async def get_reply_user_id(msg):
+    """Безопасно получает ID пользователя, которому ответили"""
     try:
-        if "object" in message_data and "message" in message_data["object"]:
-            msg = message_data["object"]["message"]
-            reply_msg = msg.get("reply_message")
-            if isinstance(reply_msg, dict):
-                return reply_msg.get("from_id", 0)
+        reply_msg = msg.get("reply_message")
+        if isinstance(reply_msg, dict):
+            return reply_msg.get("from_id", 0)
+        elif isinstance(reply_msg, int):
+            # Если это ID, получаем сообщение через API
+            result = vk.messages_get_by_id(reply_msg)
+            if result and "items" in result and result["items"]:
+                return result["items"][0].get("from_id", 0)
         return 0
     except:
         return 0
 
-async def get_reply_message(message_data):
-    """Получает сообщение, на которое был ответ"""
+async def get_reply_message(msg):
+    """Безопасно получает сообщение, на которое ответили"""
     try:
-        if "object" in message_data and "message" in message_data["object"]:
-            msg = message_data["object"]["message"]
-            reply_msg = msg.get("reply_message")
-            if isinstance(reply_msg, dict):
-                return reply_msg
+        reply_msg = msg.get("reply_message")
+        if isinstance(reply_msg, dict):
+            return reply_msg
+        elif isinstance(reply_msg, int):
+            result = vk.messages_get_by_id(reply_msg)
+            if result and "items" in result and result["items"]:
+                return result["items"][0]
         return None
     except:
         return None
@@ -410,8 +417,8 @@ async def process_message(message_data):
             peer_id = msg.get("peer_id", 0)
             user_id = msg.get("from_id", 0)
             text = msg.get("text", "")
-            reply_user_id = await get_reply_user_id(message_data)
-            reply_msg = await get_reply_message(message_data)
+            reply_user_id = await get_reply_user_id(msg)
+            reply_msg = await get_reply_message(msg)
         else:
             return
         
