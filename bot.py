@@ -8,6 +8,15 @@ import requests
 import re
 from datetime import datetime, timedelta
 
+# Импортируем настройки из config.py
+try:
+    from config import CHMOK_IMAGES, RP_IMAGES_CONFIG, STICKER_IDS
+except ImportError:
+    # Если config.py нет, создаем заглушки
+    CHMOK_IMAGES = []
+    RP_IMAGES_CONFIG = {}
+    STICKER_IDS = {"сама": 100, "бот": 101}
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -15,7 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = os.environ.get("VK_GROUP_TOKEN")  # Групповой токен
+TOKEN = os.environ.get("VK_GROUP_TOKEN")
 GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
 
 if not TOKEN:
@@ -127,54 +136,41 @@ class VKAPI:
         except Exception as e:
             logger.error(f"Long Poll error: {e}")
             return {"failed": 1}
-    
-    def photos_get(self, owner_id, album_id, count=100):
-        return self._request("photos.get", {
-            "owner_id": owner_id,
-            "album_id": album_id,
-            "count": count,
-            "extended": 1
-        })
 
 vk = VKAPI(TOKEN, GROUP_ID)
 
 # ============================================================
-# 🎭 RP КОМАНДЫ С КАРТИНКАМИ (загружаются из альбома при старте)
+# 🎯 ЗАГРУЗКА КАРТИНОК ИЗ CONFIG.PY
 # ============================================================
 
-async def load_rp_images():
-    """Загружает картинки из альбома ВК"""
-    owner_id = -GROUP_ID
-    album_id = "311514872"
-    
-    result = vk.photos_get(owner_id, album_id, 200)
-    if "error" in result:
-        logger.error(f"Album error: {result['error']}")
-        return
-    
+def load_images_from_config():
+    """Загружает картинки из config.py"""
     count = 0
-    for photo in result.get("items", []):
-        text = photo.get("text", "").strip().lower()
-        if text:
-            for cmd in text.split(","):
-                cmd = cmd.strip()
-                if cmd:
-                    attachment = f"photo{photo['owner_id']}_{photo['id']}"
-                    data["rp_images"][cmd] = attachment
-                    count += 1
-                    logger.info(f"Loaded RP: {cmd}")
+    
+    # Добавляем картинки для "чмок" (рандомные)
+    if CHMOK_IMAGES:
+        data["rp_images"]["чмок"] = CHMOK_IMAGES
+        count += 1
+        logger.info(f"Loaded {len(CHMOK_IMAGES)} images for 'чмок'")
+    
+    # Добавляем остальные команды
+    for command, images in RP_IMAGES_CONFIG.items():
+        if images:
+            data["rp_images"][command] = images
+            count += 1
+            logger.info(f"Loaded {len(images)} images for '{command}'")
     
     save_data(data)
-    logger.info(f"Loaded {count} RP images from album")
+    logger.info(f"Loaded {count} RP commands from config")
 
-# ============================================================
-# 🎭 СТИКЕРЫ ДЛЯ КОМАНД
-# ============================================================
-
-STICKER_COMMANDS = {
-    "сама": 100,      # Замени на ID стикера
-    "бот": 101,       # Замени на ID стикера
-}
+def get_random_image(command):
+    """Возвращает случайную картинку для команды"""
+    images = data.get("rp_images", {}).get(command, [])
+    if not images:
+        return None
+    if isinstance(images, list):
+        return random.choice(images)
+    return images
 
 # ============================================================
 # 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
@@ -182,6 +178,7 @@ STICKER_COMMANDS = {
 
 RP_ACTIONS = {
     "обнять": "обнял(а)",
+    "чмок": "чмокнул(а)",
     "поцеловать": "поцеловал(а)",
     "ударить": "ударил(а)",
     "погладить": "погладил(а)",
@@ -409,16 +406,12 @@ async def process_message(message_data):
         
         command = text.strip().lower()
         
-        # Стикеры
-        if command == "сама":
-            await vk.messages_send(peer_id, sticker_id=STICKER_COMMANDS["сама"])
+        # 🎯 Стикеры
+        if command in STICKER_IDS:
+            await vk.messages_send(peer_id, sticker_id=STICKER_IDS[command])
             return
         
-        if command == "бот":
-            await vk.messages_send(peer_id, sticker_id=STICKER_COMMANDS["бот"])
-            return
-        
-        # RP команды
+        # 🎭 RP команды
         if command in RP_ACTIONS:
             target_id = reply_user_id if reply_user_id else user_id
             user_name = await get_display_link(user_id)
@@ -427,15 +420,15 @@ async def process_message(message_data):
             
             result_text = f"{user_name} {action_desc} {target_name}!"
             
-            # Проверяем картинку в сохраненных данных
-            attachment = data.get("rp_images", {}).get(command)
-            if attachment:
-                await vk.messages_send(peer_id, result_text, attachment=attachment)
+            # Получаем случайную картинку для команды
+            image_url = get_random_image(command)
+            if image_url:
+                await vk.messages_send(peer_id, result_text, attachment=image_url)
             else:
                 await vk.messages_send(peer_id, result_text)
             return
         
-        # Ник (для всех)
+        # 📛 Ник (для всех)
         if command.startswith("ник "):
             new_nick = command[4:].strip()
             if len(new_nick) > 30:
@@ -458,13 +451,13 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, "❌ Нет ника")
             return
         
-        # Помощь
+        # 🆘 Помощь
         if command == "помощь":
             help_text = """
 🎭 RP БОТ
 
 Доступные команды:
-обнять, поцеловать, ударить, погладить, укусить
+обнять, чмок, поцеловать, ударить, погладить, укусить
 толкнуть, обнять за шею, поцеловать в губы
 поцеловать в щеку, поцеловать в лоб, взять за руку
 обнять за талию, прижать к себе, погладить по голове
@@ -480,7 +473,7 @@ async def process_message(message_data):
 ник [текст] — установить ник
 снять ник — снять ник
 
-📸 Картинки из альбома сообщества
+📸 Картинки из config.py
 """
             await vk.messages_send(peer_id, help_text)
             return
@@ -492,8 +485,8 @@ async def main():
     logger.info("🚀 RP BOT STARTED")
     logger.info(f"Group: {GROUP_ID}")
     
-    # Загружаем картинки из альбома
-    await load_rp_images()
+    # Загружаем картинки из config.py
+    load_images_from_config()
     
     try:
         info = vk.groups_get_by_id()
@@ -522,8 +515,7 @@ async def main():
         server = 'https://' + server
     
     logger.info("BOT READY")
-    logger.info("Commands: обнять, поцеловать, ник, сама, бот, помощь")
-    logger.info("Photos: https://vk.com/album-240201978_311514872")
+    logger.info("Commands: обнять, чмок, ник, сама, бот, помощь")
     
     while True:
         try:
