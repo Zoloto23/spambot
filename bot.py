@@ -14,15 +14,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# ТОКЕН ОТ СТРАНИЦЫ (ПОЛЬЗОВАТЕЛЬСКИЙ)
-# ============================================================
-TOKEN = os.environ.get("VK_TOKEN")
+GROUP_TOKEN = os.environ.get("VK_GROUP_TOKEN")
+USER_TOKEN = os.environ.get("VK_TOKEN")
 GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
 
-if not TOKEN:
-    logger.error("VK_TOKEN not set")
-    raise RuntimeError("VK_TOKEN not set")
+if not GROUP_TOKEN:
+    logger.error("VK_GROUP_TOKEN not set")
+    raise RuntimeError("VK_GROUP_TOKEN not set")
 
 if not GROUP_ID:
     logger.error("VK_GROUP_ID not set")
@@ -71,14 +69,17 @@ def get_nick(user_id):
     return data.get("nicks", {}).get(str(user_id), None)
 
 class VKAPI:
-    def __init__(self, token, group_id):
-        self.token = token
+    def __init__(self, group_token, user_token, group_id):
+        self.group_token = group_token
+        self.user_token = user_token
         self.group_id = group_id
         self.base_url = "https://api.vk.com/method/"
         self.version = API_VERSION
     
-    def _request(self, method, params):
-        params["access_token"] = self.token
+    def _request(self, method, params, token=None):
+        if token is None:
+            token = self.group_token
+        params["access_token"] = token
         params["v"] = self.version
         try:
             response = requests.post(self.base_url + method, data=params, timeout=15)
@@ -126,27 +127,55 @@ class VKAPI:
         except Exception as e:
             logger.error(f"Long Poll error: {e}")
             return {"failed": 1}
-    
-    def photos_get(self, owner_id, album_id, count=200):
-        return self._request("photos.get", {
-            "owner_id": owner_id,
-            "album_id": album_id,
-            "count": count,
-            "extended": 1
-        })
 
-vk = VKAPI(TOKEN, GROUP_ID)
+vk = VKAPI(GROUP_TOKEN, USER_TOKEN, GROUP_ID)
+
+# ============================================================
+# 📸 ЗАГРУЗКА ФОТО — ОТДЕЛЬНАЯ ФУНКЦИЯ С ПРЯМЫМ ЗАПРОСОМ
+# ============================================================
+
+async def get_album_photos(owner_id, album_id, count=200):
+    """ПРЯМОЙ запрос к VK API с пользовательским токеном"""
+    if not USER_TOKEN:
+        logger.error("❌ Нет пользовательского токена!")
+        return None
+    
+    url = "https://api.vk.com/method/photos.get"
+    params = {
+        "owner_id": owner_id,
+        "album_id": album_id,
+        "count": count,
+        "extended": 1,
+        "access_token": USER_TOKEN,  # ЖЁСТКО пользовательский токен
+        "v": API_VERSION
+    }
+    
+    try:
+        response = requests.post(url, data=params, timeout=15)
+        response.raise_for_status()
+        result = response.json()
+        if "error" in result:
+            logger.error(f"VK API error: {result['error']['error_msg']}")
+            return None
+        return result.get("response", {})
+    except Exception as e:
+        logger.error(f"Request error: {e}")
+        return None
 
 async def load_images_from_album():
     """Загружает картинки из альбома ВК по описанию"""
+    if not USER_TOKEN:
+        logger.warning("⚠️ Нет VK_TOKEN! Картинки не загрузятся.")
+        return 0
+    
     album_id = "311514872"
     owner_id = -GROUP_ID
     
     logger.info("📸 Загрузка картинок из альбома...")
     
-    result = vk.photos_get(owner_id, album_id, 200)
-    if "error" in result:
-        logger.error(f"Ошибка альбома: {result['error']}")
+    result = await get_album_photos(owner_id, album_id, 200)
+    if not result:
+        logger.error("❌ Не удалось получить фото из альбома")
         return 0
     
     count = 0
@@ -478,9 +507,12 @@ async def process_message(message_data):
 async def main():
     logger.info("🚀 RP BOT STARTED")
     logger.info(f"Group: {GROUP_ID}")
-    logger.info("✅ Используется пользовательский токен")
+    logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
     
-    await load_images_from_album()
+    if USER_TOKEN:
+        await load_images_from_album()
+    else:
+        logger.warning("⚠️ VK_TOKEN не добавлен! Картинки НЕ загрузятся.")
     
     try:
         info = vk.groups_get_by_id()
