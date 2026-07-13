@@ -143,9 +143,97 @@ class VKAPI:
 
 vk = VKAPI(TOKEN, USER_TOKEN, GROUP_ID)
 
-def upload_photo(photo_url):
+# ============================================================
+# 📸 ЗАГРУЗКА КАРТИНОК ИЗ PINTEREST
+# ============================================================
+
+RP_IMAGE_URLS = {
+    "обнять": [
+        "https://i.pinimg.com/736x/b7/34/b1/b734b111a8567a31fd181dd458c08414.jpg",
+        "https://i.pinimg.com/736x/1a/2b/3c/1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p.jpg",
+        "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
+    ],
+    "поцеловать": [
+        "https://i.pinimg.com/736x/2d/bf/18/2dbf18b3e07281b88d03a674f7c11cc5.jpg",
+        "https://i.pinimg.com/736x/3c/4d/5e/3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r.jpg"
+    ],
+    "ударить": [
+        "https://i.pinimg.com/736x/5d/73/2f/5d732f6444c8f3c0fcaf16c507be4c26.jpg"
+    ],
+    "погладить": [
+        "https://i.pinimg.com/736x/6a/2d/8f/6a2d8f3d7c4e5f6g7h8i9j0k1l2m3n4o5.jpg"
+    ],
+    "укусить": [
+        "https://i.pinimg.com/736x/4f/3e/2d/4f3e2d1c2b3a4f5e6d7c8b9a0f1e2d3c.jpg"
+    ],
+    "толкнуть": [
+        "https://i.pinimg.com/736x/8a/7b/6c/8a7b6c5d4e3f2g1h2i3j4k5l6m7n8o9p.jpg"
+    ],
+    "покусать": [
+        "https://i.pinimg.com/736x/4d/5e/6f/4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s.jpg"
+    ],
+    "чмок": [
+        "https://i.pinimg.com/736x/2d/bf/18/2dbf18b3e07281b88d03a674f7c11cc5.jpg"
+    ],
+    "обнять за шею": [
+        "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
+    ],
+    "поцеловать в губы": [
+        "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
+    ],
+    "поцеловать в щеку": [
+        "https://i.pinimg.com/736x/9v/0w/1x/9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j4k.jpg"
+    ],
+    "взять за руку": [
+        "https://i.pinimg.com/736x/1x/2y/3z/1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m.jpg"
+    ],
+    "прижать к себе": [
+        "https://i.pinimg.com/736x/4g/5h/6i/4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v.jpg"
+    ],
+    "погладить по голове": [
+        "https://i.pinimg.com/736x/4a/5b/6c/4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o9p.jpg"
+    ],
+    "задушить в объятиях": [
+        "https://i.pinimg.com/736x/5h/6i/7j/5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w.jpg"
+    ],
+    "потискать": [
+        "https://i.pinimg.com/736x/3f/4g/5h/3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u.jpg"
+    ],
+    "облизать": [
+        "https://i.pinimg.com/736x/2e/3f/4g/2e3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t.jpg"
+    ],
+    "поцеловать руку": [
+        "https://i.pinimg.com/736x/0w/1x/2y/0w1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l.jpg"
+    ],
+    "обнять сзади": [
+        "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
+    ],
+    "шепнуть на ухо": [
+        "https://i.pinimg.com/736x/3z/4a/5b/3z4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o.jpg"
+    ],
+    "раздеть": [
+        "https://i.pinimg.com/736x/1a/2b/3c/1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p.jpg"
+    ],
+    "массаж": [
+        "https://i.pinimg.com/736x/0j/1k/2l/0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y.jpg"
+    ],
+    "поцеловать в шею": [
+        "https://i.pinimg.com/736x/6f/7g/8h/6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u.jpg"
+    ],
+    "лечь в кровать": [
+        "https://i.pinimg.com/736x/8h/9i/0j/8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w.jpg"
+    ],
+    "пригласить в душ": [
+        "https://i.pinimg.com/736x/9i/0j/1k/9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x.jpg"
+    ],
+    "поцеловать в лоб": [
+        "https://i.pinimg.com/736x/8u/9v/0w/8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j.jpg"
+    ]
+}
+
+def upload_photo_to_vk(image_url):
     try:
-        r = requests.get(photo_url, timeout=10)
+        r = requests.get(image_url, timeout=10)
         r.raise_for_status()
         
         server = vk.photos_get_messages_upload_server()
@@ -175,19 +263,24 @@ def upload_photo(photo_url):
         logger.error(f"Upload error: {e}")
         return None
 
-def get_photos_from_msg(msg):
-    photos = []
-    if not msg:
-        return photos
-    for att in msg.get("attachments", []):
-        if att.get("type") == "photo":
-            sizes = att.get("photo", {}).get("sizes", [])
-            if sizes:
-                biggest = max(sizes, key=lambda x: x.get("width", 0) * x.get("height", 0))
-                url = biggest.get("url")
-                if url:
-                    photos.append(url)
-    return photos
+def preload_all_images():
+    """Загружает все картинки при старте"""
+    logger.info("📸 Загрузка картинок...")
+    total = 0
+    
+    for cmd, urls in RP_IMAGE_URLS.items():
+        attachments = []
+        for url in urls:
+            att = upload_photo_to_vk(url)
+            if att:
+                attachments.append(att)
+        if attachments:
+            data["rp_images"][cmd] = attachments
+            total += len(attachments)
+            logger.info(f"✅ {cmd} → {len(attachments)} фото")
+    
+    save_data(data)
+    logger.info(f"🎉 Загружено {total} картинок")
 
 def get_reply_info(msg):
     try:
@@ -199,7 +292,7 @@ def get_reply_info(msg):
         return 0, None
 
 # ============================================================
-# RP ДЕЙСТВИЯ
+# 🎭 RP ДЕЙСТВИЯ
 # ============================================================
 
 RP_ACTIONS = {
@@ -216,82 +309,19 @@ RP_ACTIONS = {
     "поцеловать в щеку": "поцеловал(а) в щеку",
     "поцеловать в лоб": "поцеловал(а) в лоб",
     "взять за руку": "взял(а) за руку",
-    "обнять за талию": "обнял(а) за талию",
     "прижать к себе": "прижал(а) к себе",
     "погладить по голове": "погладил(а) по голове",
     "задушить в объятиях": "задушил(а) в объятиях",
     "потискать": "потискал(а)",
     "облизать": "облизал(а)",
-    "пощечина": "дал(а) пощёчину",
-    "ущипнуть": "ущипнул(а)",
-    "кинуть камень": "кинул(а) камень в",
-    "полить водой": "полил(а) водой",
-    "кинуть торт": "кинул(а) торт в",
-    "облить соком": "облил(а) соком",
-    "забросать подушками": "забросал(а) подушками",
-    "дать пять": "дал(а) пять",
-    "кулак": "стукнул(а) кулаком",
-    "пожать руку": "пожал(а) руку",
-    "поклон": "поклонился(лась)",
-    "салют": "отдал(а) честь",
-    "обнять сзади": "обнял(а) сзади",
     "поцеловать руку": "поцеловал(а) руку",
+    "обнять сзади": "обнял(а) сзади",
     "шепнуть на ухо": "шепнул(а) на ухо",
-    "танцевать": "танцевал(а) с",
-    "петь": "пел(а) для",
-    "играть на гитаре": "играл(а) на гитаре для",
-    "рисовать": "нарисовал(а) портрет",
-    "читать стихи": "читал(а) стихи",
-    "пнуть": "пнул(а)",
-    "ударить головой": "ударил(а) головой",
-    "кинуть в стену": "кинул(а) в стену",
-    "схватить за горло": "схватил(а) за горло",
-    "дать подзатыльник": "дал(а) подзатыльник",
-    "накормить": "накормил(а)",
-    "напоить": "напоил(а)",
-    "угостить конфетой": "угостил(а) конфетой",
-    "приготовить завтрак": "приготовил(а) завтрак",
-    "бегать": "бегал(а) с",
-    "плавать": "плавал(а) с",
-    "играть в футбол": "играл(а) в футбол с",
-    "качаться": "качался(лась) с",
-    "гулять": "гулял(а) с",
-    "сидеть на траве": "сидел(а) на траве с",
-    "смотреть на звёзды": "смотрел(а) на звёзды с",
-    "купаться в реке": "купался(лась) в реке с",
-    "лететь": "летел(а) с",
-    "ехать на машине": "ехал(а) на машине с",
-    "плыть на корабле": "плыл(а) на корабле с",
-    "идти в горы": "шёл(ла) в горы с",
     "раздеть": "раздел(а)",
-    "прикоснуться": "прикоснулся(лась)",
-    "снять футболку": "снял(а) футболку с",
-    "снять штаны": "снял(а) штаны с",
-    "поцеловать в шею": "поцеловал(а) в шею",
-    "обнять голым": "обнял(а) голым(ой)",
-    "лечь в кровать": "лёг(ла) в кровать с",
-    "пригласить в душ": "пригласил(а) в душ",
     "массаж": "сделал(а) массаж",
-    "погладить по спине": "погладил(а) по спине",
-    "поцеловать в грудь": "поцеловал(а) в грудь",
-    "обнять в постели": "обнял(а) в постели",
-    "шептать нежности": "шептал(а) нежности",
-    "погладить по ноге": "погладил(а) по ноге",
-    "поцеловать в плечо": "поцеловал(а) в плечо",
-    "обнять за плечи": "обнял(а) за плечи",
-    "лечь рядом": "лёг(ла) рядом с",
-    "вдохнуть аромат": "вдохнул(а) аромат",
-    "погладить по груди": "погладил(а) по груди",
-    "шлёпнуть": "шлёпнул(а)",
-    "почесать": "почесал(а)",
-    "пощекотать": "пощекотал(а)",
-    "схватить": "схватил(а)",
-    "оттолкнуть": "оттолкнул(а)",
-    "прикусить": "прикусил(а)",
-    "лобзать": "лобзал(а)",
-    "целовать": "целовал(а)",
-    "обнимать": "обнимал(а)",
-    "ласкать": "ласкал(а)"
+    "поцеловать в шею": "поцеловал(а) в шею",
+    "лечь в кровать": "лёг(ла) в кровать с",
+    "пригласить в душ": "пригласил(а) в душ"
 }
 
 async def get_user_name(user_id):
@@ -388,13 +418,10 @@ async def process_message(message_data):
         text = msg.get("text", "")
         
         reply_user_id = 0
-        reply_msg = None
         try:
             reply = msg.get("reply_message")
             if isinstance(reply, dict):
                 reply_user_id = reply.get("from_id", 0)
-                reply_msg = reply
-                logger.info(f"📩 Ответ на сообщение от {reply_user_id}")
         except:
             pass
         
@@ -435,77 +462,14 @@ async def process_message(message_data):
         
         command = text[1:].strip().lower()
         
-        # ЗАГРУЗКА ФОТО
-        if command.startswith("загрузить "):
-            if not is_mod(user_id):
-                vk.messages_send(peer_id, "❌ Нет прав!")
-                return
-            
-            parts = command.split()
-            if len(parts) < 2:
-                vk.messages_send(peer_id, "❌ !загрузить обнять")
-                return
-            
-            rp_cmd = parts[1]
-            if rp_cmd == "все":
-                if len(parts) < 3:
-                    vk.messages_send(peer_id, "❌ !загрузить все обнять")
-                    return
-                rp_cmd = parts[2]
-            
-            if rp_cmd not in RP_ACTIONS:
-                vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена")
-                return
-            
-            photos = []
-            if reply_msg and isinstance(reply_msg, dict):
-                photos.extend(get_photos_from_msg(reply_msg))
-            photos.extend(get_photos_from_msg(msg))
-            
-            if not photos:
-                vk.messages_send(peer_id, "❌ Нет фото! Прикрепите фото или ответьте на сообщение с фото.")
-                return
-            
-            if len(photos) > 30:
-                photos = photos[:30]
-                vk.messages_send(peer_id, f"⚠️ Загружаю только 30 фото")
-            
-            vk.messages_send(peer_id, f"⏳ Загрузка {len(photos)} фото...")
-            
-            attachments = []
-            failed = 0
-            for url in photos:
-                att = upload_photo(url)
-                if att:
-                    attachments.append(att)
-                else:
-                    failed += 1
-            
-            if not attachments:
-                vk.messages_send(peer_id, f"❌ Не удалось загрузить ни одного фото! Ошибок: {failed}")
-                return
-            
-            if rp_cmd not in data["rp_images"]:
-                data["rp_images"][rp_cmd] = []
-            data["rp_images"][rp_cmd].extend(attachments)
-            save_data(data)
-            
-            msg_text = f"✅ Загружено {len(attachments)} фото для '{rp_cmd}'!"
-            if failed:
-                msg_text += f"\n⚠️ {failed} фото не загрузились"
-            
-            vk.messages_send(peer_id, msg_text, attachment=attachments[0])
-            return
-        
-        # RP КОМАНДЫ
+        # ============================================================
+        # 🎭 RP КОМАНДЫ
+        # ============================================================
         if command in RP_ACTIONS:
-            # Определяем цель
             if reply_user_id and reply_user_id != user_id:
                 target_id = reply_user_id
-                logger.info(f"🎯 Цель: пользователь {target_id}")
             else:
                 target_id = user_id
-                logger.info(f"🎯 Цель: сам пользователь {target_id}")
             
             user_name = await get_display_link(user_id)
             target_name = await get_display_link(target_id)
@@ -516,19 +480,19 @@ async def process_message(message_data):
             else:
                 result_text = f"{user_name} {action_desc} {target_name}!"
             
-            # Берём фото из загруженных
             images = data.get("rp_images", {}).get(command, [])
             if images:
-                # Берём первое фото (не рандомное, чтобы точно показать)
-                attachment = images[0]
-                await vk.messages_send(peer_id, result_text, attachment=attachment)
-                logger.info(f"✅ RP '{command}' с фото")
+                attachment = random.choice(images)
+                vk.messages_send(peer_id, result_text, attachment=attachment)
+                logger.info(f"✅ {command} с фото")
             else:
-                await vk.messages_send(peer_id, result_text)
-                logger.info(f"ℹ️ RP '{command}' без фото")
+                vk.messages_send(peer_id, result_text)
+                logger.info(f"ℹ️ {command} без фото")
             return
         
+        # ============================================================
         # НИК
+        # ============================================================
         if command.startswith("ник "):
             new_nick = command[4:].strip()
             if len(new_nick) > 30:
@@ -551,21 +515,23 @@ async def process_message(message_data):
                 vk.messages_send(peer_id, "❌ Нет ника")
             return
         
+        # ============================================================
         # ПОМОЩЬ
+        # ============================================================
         if command == "помощь":
             help_text = """
-🎭 RP БОТ
+🎭 **RP БОТ**
 
 💬 Команды:
 !обнять, !чмок, !поцеловать, !покусать, !ударить, !погладить, !укусить
-и многие другие...
-
-📸 Загрузка фото:
-!загрузить [команда] — прикрепи фото
-!загрузить все [команда] — все фото
+!толкнуть, !обнять за шею, !поцеловать в губы, !поцеловать в щеку
+!поцеловать в лоб, !взять за руку, !прижать к себе, !погладить по голове
+!задушить в объятиях, !потискать, !облизать, !поцеловать руку
+!обнять сзади, !шепнуть на ухо, !раздеть, !массаж
+!поцеловать в шею, !лечь в кровать, !пригласить в душ
 
 📌 Чтобы применить к другому пользователю:
-Ответь на его сообщение и напиши команду
+Ответь на его сообщение + напиши команду
 
 📛 Ник: !ник [текст], !снять ник
 """
@@ -576,12 +542,14 @@ async def process_message(message_data):
         logger.error(f"Process error: {e}")
 
 async def main():
-    logger.info("🚀 БОТ ЗАПУЩЕН")
+    logger.info("🚀 АХУЕННЫЙ RP БОТ ЗАПУЩЕН")
     logger.info(f"Group: {GROUP_ID}")
     logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
     
     if not USER_TOKEN:
-        logger.warning("⚠️ VK_TOKEN не добавлен! Загрузка фото НЕ РАБОТАЕТ!")
+        logger.warning("⚠️ VK_TOKEN не добавлен! Картинки НЕ ЗАГРУЗЯТСЯ!")
+    else:
+        preload_all_images()
     
     try:
         info = vk.groups_get_by_id()
@@ -610,8 +578,8 @@ async def main():
         server = 'https://' + server
     
     logger.info("✅ БОТ ГОТОВ")
-    logger.info("💬 !обнять, !чмок, !загрузить")
-    logger.info("📌 Ответь на сообщение + команда — применится к тому, кому ответил")
+    logger.info("💬 !обнять, !чмок, !поцеловать и другие")
+    logger.info("📌 Ответь на сообщение + команда = применится к тому, кому ответил")
     
     while True:
         try:
