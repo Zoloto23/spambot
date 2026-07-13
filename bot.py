@@ -14,11 +14,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-GROUP_TOKEN = os.environ.get("VK_GROUP_TOKEN")
-USER_TOKEN = os.environ.get("VK_TOKEN")
+TOKEN = os.environ.get("VK_GROUP_TOKEN")
 GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
 
-if not GROUP_TOKEN:
+if not TOKEN:
     logger.error("VK_GROUP_TOKEN not set")
     raise RuntimeError("VK_GROUP_TOKEN not set")
 
@@ -48,7 +47,7 @@ def load_data():
             },
             "message_history": {},
             "user_stats": {},
-            "rp_images": {}
+            "rp_images": {}  # {команда: photo_attachment}
         }
 
 def save_data(data):
@@ -69,17 +68,14 @@ def get_nick(user_id):
     return data.get("nicks", {}).get(str(user_id), None)
 
 class VKAPI:
-    def __init__(self, group_token, user_token, group_id):
-        self.group_token = group_token
-        self.user_token = user_token
+    def __init__(self, token, group_id):
+        self.token = token
         self.group_id = group_id
         self.base_url = "https://api.vk.com/method/"
         self.version = API_VERSION
     
-    def _request(self, method, params, token=None):
-        if token is None:
-            token = self.group_token
-        params["access_token"] = token
+    def _request(self, method, params):
+        params["access_token"] = self.token
         params["v"] = self.version
         try:
             response = requests.post(self.base_url + method, data=params, timeout=15)
@@ -127,76 +123,64 @@ class VKAPI:
         except Exception as e:
             logger.error(f"Long Poll error: {e}")
             return {"failed": 1}
+    
+    def photos_get_messages_upload_server(self):
+        return self._request("photos.getMessagesUploadServer")
+    
+    def photos_save_messages_photo(self, photo, server, hash):
+        return self._request("photos.saveMessagesPhoto", {
+            "photo": photo,
+            "server": server,
+            "hash": hash
+        })
 
-vk = VKAPI(GROUP_TOKEN, USER_TOKEN, GROUP_ID)
+vk = VKAPI(TOKEN, GROUP_ID)
 
 # ============================================================
-# 📸 ЗАГРУЗКА ФОТО — ОТДЕЛЬНАЯ ФУНКЦИЯ С ПРЯМЫМ ЗАПРОСОМ
+# 📤 ЗАГРУЗКА ФОТО НА СЕРВЕР VK
 # ============================================================
 
-async def get_album_photos(owner_id, album_id, count=200):
-    """ПРЯМОЙ запрос к VK API с пользовательским токеном"""
-    if not USER_TOKEN:
-        logger.error("❌ Нет пользовательского токена!")
-        return None
-    
-    url = "https://api.vk.com/method/photos.get"
-    params = {
-        "owner_id": owner_id,
-        "album_id": album_id,
-        "count": count,
-        "extended": 1,
-        "access_token": USER_TOKEN,  # ЖЁСТКО пользовательский токен
-        "v": API_VERSION
-    }
-    
+async def upload_image_to_vk(image_url):
+    """Загружает картинку на сервер VK и возвращает attachment"""
     try:
-        response = requests.post(url, data=params, timeout=15)
+        # Скачиваем картинку
+        response = requests.get(image_url, timeout=10)
         response.raise_for_status()
-        result = response.json()
-        if "error" in result:
-            logger.error(f"VK API error: {result['error']['error_msg']}")
+        
+        # Получаем сервер для загрузки
+        upload_server = vk.photos_get_messages_upload_server()
+        if "error" in upload_server:
             return None
-        return result.get("response", {})
+        
+        upload_url = upload_server.get("upload_url")
+        if not upload_url:
+            return None
+        
+        # Загружаем картинку
+        files = {'photo': ('image.jpg', response.content, 'image/jpeg')}
+        upload_response = requests.post(upload_url, files=files)
+        upload_data = upload_response.json()
+        
+        # Сохраняем картинку
+        saved = vk.photos_save_messages_photo(
+            photo=upload_data.get("photo"),
+            server=upload_data.get("server"),
+            hash=upload_data.get("hash")
+        )
+        
+        if "error" in saved or not saved:
+            return None
+        
+        photo = saved[0]
+        attachment = f"photo{photo['owner_id']}_{photo['id']}"
+        return attachment
     except Exception as e:
-        logger.error(f"Request error: {e}")
+        logger.error(f"Upload error: {e}")
         return None
 
-async def load_images_from_album():
-    """Загружает картинки из альбома ВК по описанию"""
-    if not USER_TOKEN:
-        logger.warning("⚠️ Нет VK_TOKEN! Картинки не загрузятся.")
-        return 0
-    
-    album_id = "311514872"
-    owner_id = -GROUP_ID
-    
-    logger.info("📸 Загрузка картинок из альбома...")
-    
-    result = await get_album_photos(owner_id, album_id, 200)
-    if not result:
-        logger.error("❌ Не удалось получить фото из альбома")
-        return 0
-    
-    count = 0
-    data["rp_images"] = {}
-    
-    for photo in result.get("items", []):
-        text = photo.get("text", "").strip().lower()
-        if text:
-            for cmd in text.split(","):
-                cmd = cmd.strip()
-                if cmd:
-                    attachment = f"photo{photo['owner_id']}_{photo['id']}"
-                    if cmd not in data["rp_images"]:
-                        data["rp_images"][cmd] = []
-                    data["rp_images"][cmd].append(attachment)
-                    count += 1
-                    logger.info(f"📸 {cmd} → загружено")
-    
-    save_data(data)
-    logger.info(f"✅ Загружено {count} картинок из альбома")
-    return count
+# ============================================================
+# 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
+# ============================================================
 
 RP_ACTIONS = {
     "обнять": "обнял(а)",
@@ -392,11 +376,13 @@ async def process_message(message_data):
             peer_id = msg.get("peer_id", 0)
             user_id = msg.get("from_id", 0)
             text = msg.get("text", "")
+            attachments = msg.get("attachments", [])
             reply_user_id = await get_reply_user_id(message_data)
         else:
             peer_id = message_data.get("peer_id", 0)
             user_id = message_data.get("from_id", 0)
             text = message_data.get("text", "")
+            attachments = []
             reply_user_id = 0
         
         if user_id < 0:
@@ -433,10 +419,67 @@ async def process_message(message_data):
         
         command = text.strip().lower()
         
+        # ============================================================
+        # 📸 КОМАНДА ДЛЯ ЗАГРУЗКИ ФОТО: !загрузи [команда]
+        # ============================================================
+        if command.startswith("загрузи "):
+            if not is_mod(user_id):
+                await vk.messages_send(peer_id, "❌ Нет прав для загрузки фото!")
+                return
+            
+            # Получаем название команды
+            rp_cmd = command[8:].strip()
+            if not rp_cmd:
+                await vk.messages_send(peer_id, "❌ Укажите команду: !загрузи обнять")
+                return
+            
+            # Проверяем, что команда существует
+            if rp_cmd not in RP_ACTIONS:
+                await vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена в списке RP команд")
+                return
+            
+            # Проверяем, есть ли фото в сообщении
+            if not attachments:
+                await vk.messages_send(peer_id, "❌ Прикрепите фото к сообщению!")
+                return
+            
+            # Ищем фото среди вложений
+            photo_attachment = None
+            for att in attachments:
+                if att.get("type") == "photo":
+                    photo = att.get("photo", {})
+                    sizes = photo.get("sizes", [])
+                    if sizes:
+                        # Берем самое большое фото
+                        largest = max(sizes, key=lambda x: x.get("width", 0) * x.get("height", 0))
+                        photo_url = largest.get("url")
+                        if photo_url:
+                            # Загружаем фото на сервер VK
+                            attachment = await upload_image_to_vk(photo_url)
+                            if attachment:
+                                photo_attachment = attachment
+                                break
+            
+            if not photo_attachment:
+                await vk.messages_send(peer_id, "❌ Не удалось загрузить фото!")
+                return
+            
+            # Сохраняем фото для команды
+            data["rp_images"][rp_cmd] = photo_attachment
+            save_data(data)
+            await vk.messages_send(peer_id, f"✅ Фото загружено для команды '{rp_cmd}'!")
+            return
+        
+        # ============================================================
+        # 🎯 СТИКЕРЫ
+        # ============================================================
         if command in STICKER_IDS:
             await vk.messages_send(peer_id, sticker_id=STICKER_IDS[command])
             return
         
+        # ============================================================
+        # 🎭 RP КОМАНДЫ
+        # ============================================================
         if command in RP_ACTIONS:
             target_id = reply_user_id if reply_user_id else user_id
             user_name = await get_display_link(user_id)
@@ -445,14 +488,17 @@ async def process_message(message_data):
             
             result_text = f"{user_name} {action_desc} {target_name}!"
             
-            images = data.get("rp_images", {}).get(command, [])
-            if images:
-                attachment = random.choice(images)
+            # Проверяем, есть ли загруженное фото для команды
+            attachment = data.get("rp_images", {}).get(command)
+            if attachment:
                 await vk.messages_send(peer_id, result_text, attachment=attachment)
             else:
                 await vk.messages_send(peer_id, result_text)
             return
         
+        # ============================================================
+        # 📛 НИК (для всех)
+        # ============================================================
         if command.startswith("ник "):
             new_nick = command[4:].strip()
             if len(new_nick) > 30:
@@ -475,6 +521,9 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, "❌ Нет ника")
             return
         
+        # ============================================================
+        # 🆘 ПОМОЩЬ
+        # ============================================================
         if command == "помощь":
             help_text = """
 🎭 **RP БОТ**
@@ -486,7 +535,11 @@ async def process_message(message_data):
 обнять за талию, прижать к себе, погладить по голове
 и многие другие...
 
-📌 Чтобы применить к пользователю:
+📸 Загрузка своих фото:
+!загрузи [команда] — прикрепи фото к сообщению
+Пример: !загрузи обнять
+
+📌 Чтобы применить команду к пользователю:
 Ответь на его сообщение и напиши команду
 
 🎯 Стикеры:
@@ -495,8 +548,6 @@ async def process_message(message_data):
 📛 Ник:
 ник [текст] — установить ник
 снять ник — снять ник
-
-📸 Картинки из альбома: https://vk.com/album-240201978_311514872
 """
             await vk.messages_send(peer_id, help_text)
             return
@@ -507,12 +558,6 @@ async def process_message(message_data):
 async def main():
     logger.info("🚀 RP BOT STARTED")
     logger.info(f"Group: {GROUP_ID}")
-    logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
-    
-    if USER_TOKEN:
-        await load_images_from_album()
-    else:
-        logger.warning("⚠️ VK_TOKEN не добавлен! Картинки НЕ загрузятся.")
     
     try:
         info = vk.groups_get_by_id()
@@ -542,7 +587,7 @@ async def main():
     
     logger.info("✅ BOT READY")
     logger.info("💬 Commands: обнять, чмок, ник, сама, бот, помощь")
-    logger.info("📸 Картинки из альбома: https://vk.com/album-240201978_311514872")
+    logger.info("📸 !загрузи [команда] — загрузить своё фото")
     
     while True:
         try:
