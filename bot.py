@@ -394,7 +394,7 @@ async def process_message(message_data):
             if isinstance(reply, dict):
                 reply_user_id = reply.get("from_id", 0)
                 reply_msg = reply
-                logger.info(f"📩 Ответ на сообщение от пользователя {reply_user_id}")
+                logger.info(f"📩 Ответ на сообщение от {reply_user_id}")
         except:
             pass
         
@@ -435,9 +435,7 @@ async def process_message(message_data):
         
         command = text[1:].strip().lower()
         
-        # ============================================================
         # ЗАГРУЗКА ФОТО
-        # ============================================================
         if command.startswith("загрузить "):
             if not is_mod(user_id):
                 vk.messages_send(peer_id, "❌ Нет прав!")
@@ -499,17 +497,13 @@ async def process_message(message_data):
             vk.messages_send(peer_id, msg_text, attachment=attachments[0])
             return
         
-        # ============================================================
-        # RP КОМАНДЫ (С ФОТО)
-        # ============================================================
+        # RP КОМАНДЫ
         if command in RP_ACTIONS:
             # Определяем цель
             if reply_user_id and reply_user_id != user_id:
-                # Если есть ответ на чужое сообщение — цель тот, кому ответили
                 target_id = reply_user_id
-                logger.info(f"🎯 Цель: пользователь {target_id} (из ответа)")
+                logger.info(f"🎯 Цель: пользователь {target_id}")
             else:
-                # Если ответа нет или ответ на себя — цель сам пользователь
                 target_id = user_id
                 logger.info(f"🎯 Цель: сам пользователь {target_id}")
             
@@ -518,25 +512,23 @@ async def process_message(message_data):
             action_desc = RP_ACTIONS[command]
             
             if user_id == target_id:
-                # Если цель — сам пользователь
                 result_text = f"{user_name} {action_desc} себя!"
             else:
                 result_text = f"{user_name} {action_desc} {target_name}!"
             
-            # Проверяем есть ли загруженные фото для этой команды
+            # Берём фото из загруженных
             images = data.get("rp_images", {}).get(command, [])
             if images:
-                attachment = random.choice(images)
-                vk.messages_send(peer_id, result_text, attachment=attachment)
-                logger.info(f"✅ RP '{command}' с фото → {target_id}")
+                # Берём первое фото (не рандомное, чтобы точно показать)
+                attachment = images[0]
+                await vk.messages_send(peer_id, result_text, attachment=attachment)
+                logger.info(f"✅ RP '{command}' с фото")
             else:
-                vk.messages_send(peer_id, result_text)
-                logger.info(f"ℹ️ RP '{command}' без фото → {target_id}")
+                await vk.messages_send(peer_id, result_text)
+                logger.info(f"ℹ️ RP '{command}' без фото")
             return
         
-        # ============================================================
         # НИК
-        # ============================================================
         if command.startswith("ник "):
             new_nick = command[4:].strip()
             if len(new_nick) > 30:
@@ -559,9 +551,7 @@ async def process_message(message_data):
                 vk.messages_send(peer_id, "❌ Нет ника")
             return
         
-        # ============================================================
         # ПОМОЩЬ
-        # ============================================================
         if command == "помощь":
             help_text = """
 🎭 RP БОТ
