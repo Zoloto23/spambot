@@ -117,6 +117,9 @@ DEFAULT_DATA = {
     "commands_usage": {},
     "economy_log": {},
     "moderation_log": {},
+    "marriage_requests": {},
+    "todos": {},
+    "rep_history": {},
     "settings": {
         "welcome": "👋 Добро пожаловать в чат, {user}!",
         "farewell": "👋 Пока, {user}!",
@@ -502,10 +505,7 @@ async def on_level_up(user_id: int, new_level: int):
         # Награда за уровень
         reward = new_level * 100
         await add_money(user_id, reward)
-        
-        # Уведомление
-        name = await get_display_name(user_id)
-        # Отправка уведомления будет в обработчике команд
+        # Уведомление будет отправлено в обработчике
     except Exception as e:
         logger.error(f"Ошибка обработки повышения уровня {user_id}: {e}")
 
@@ -558,6 +558,67 @@ def check_links(text: str) -> bool:
     except Exception as e:
         logger.error(f"Ошибка проверки ссылок: {e}")
         return False
+
+# ============================================================
+# ОБРАБОТКА НАПОМИНАНИЙ
+# ============================================================
+async def check_reminders():
+    """Проверка напоминаний"""
+    try:
+        now = time.time()
+        for rid, reminder in list(data.get("reminders", {}).items()):
+            if reminder.get("time", 0) <= now:
+                user_id = reminder.get("user_id")
+                peer_id = reminder.get("peer_id")
+                text = reminder.get("text", "Напоминание")
+                
+                try:
+                    name = await get_display_name(user_id)
+                    vk.messages_send(peer_id, f"⏰ **Напоминание для {name}:**\n{text}")
+                except Exception as e:
+                    logger.error(f"Ошибка отправки напоминания: {e}")
+                
+                del data["reminders"][rid]
+                safe_save_json(DATA_FILE, data)
+    except Exception as e:
+        logger.error(f"Ошибка проверки напоминаний: {e}")
+
+# ============================================================
+# ОБРАБОТКА ВХОДА/ВЫХОДА
+# ============================================================
+async def handle_group_join(event: dict):
+    """Обработка входа в беседу"""
+    try:
+        user_id = event.get("user_id")
+        peer_id = event.get("peer_id")
+        
+        if not user_id or not peer_id:
+            return
+        
+        welcome = data["settings"].get("welcome", "👋 Добро пожаловать в чат, {user}!")
+        name = await get_display_name(user_id)
+        welcome_text = welcome.replace("{user}", name)
+        
+        vk.messages_send(peer_id, welcome_text)
+    except Exception as e:
+        logger.error(f"Ошибка обработки входа: {e}")
+
+async def handle_group_leave(event: dict):
+    """Обработка выхода из беседы"""
+    try:
+        user_id = event.get("user_id")
+        peer_id = event.get("peer_id")
+        
+        if not user_id or not peer_id:
+            return
+        
+        farewell = data["settings"].get("farewell", "👋 Пока, {user}!")
+        name = await get_display_name(user_id)
+        farewell_text = farewell.replace("{user}", name)
+        
+        vk.messages_send(peer_id, farewell_text)
+    except Exception as e:
+        logger.error(f"Ошибка обработки выхода: {e}")
 
 # ============================================================
 # ОСНОВНАЯ ЛОГИКА БОТА
@@ -1090,7 +1151,7 @@ async def process_message(message_data: dict):
                 return
         
         # ------------------------------------------------------------
-        # 2. КОМАНДЫ МОДЕРАЦИИ (40 команд)
+        # 2. КОМАНДЫ МОДЕРАЦИИ (30 команд)
         # ------------------------------------------------------------
         if is_mod(user_id):
             # 2.1 mute - заглушить
@@ -2107,9 +2168,7 @@ async def process_message(message_data: dict):
         # 3.20 ping - проверка работы
         if command == "ping":
             try:
-                start_time = time.time()
                 vk.messages_send(peer_id, "🏓 Понг!")
-                # Ответ уже отправлен, измеряем время ответа
             except Exception as e:
                 logger.error(f"Ошибка ping: {e}")
             return
@@ -2158,436 +2217,7 @@ async def process_message(message_data: dict):
                 vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
             return
         
-        # 3.24 marry - брак
-        if command == "marry" or command == "брак":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !marry [ID]")
-                    return
-                
-                target_id = int(args[0])
-                if target_id == user_id:
-                    vk.messages_send(peer_id, "❌ Нельзя жениться на себе!")
-                    return
-                
-                if "marriage" not in data:
-                    data["marriage"] = {}
-                
-                if str(user_id) in data["marriage"]:
-                    vk.messages_send(peer_id, "❌ Вы уже состоите в браке!")
-                    return
-                
-                if str(target_id) in data["marriage"]:
-                    vk.messages_send(peer_id, "❌ Этот пользователь уже в браке!")
-                    return
-                
-                # Запрос на брак
-                request_key = f"marry_{target_id}_{user_id}"
-                data["marriage_requests"][request_key] = {
-                    "from": user_id,
-                    "to": target_id,
-                    "time": time.time()
-                }
-                safe_save_json(DATA_FILE, data)
-                vk.messages_send(peer_id, f"💍 {await get_display_link(target_id)}, вы согласны? (!accept_marry)")
-            except ValueError:
-                vk.messages_send(peer_id, "❌ Ошибка: ID должен быть числом!")
-            except Exception as e:
-                logger.error(f"Ошибка marry: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.25 divorce - развод
-        if command == "divorce" or command == "развод":
-            try:
-                if "marriage" in data and str(user_id) in data["marriage"]:
-                    del data["marriage"][str(user_id)]
-                    safe_save_json(DATA_FILE, data)
-                    vk.messages_send(peer_id, f"💔 Вы развелись!")
-                else:
-                    vk.messages_send(peer_id, "❌ Вы не состоите в браке!")
-            except Exception as e:
-                logger.error(f"Ошибка divorce: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.26 afk - отошел
-        if command == "afk" or command == "отошел":
-            try:
-                reason = " ".join(args) if args else "Отошел"
-                data["afk_users"][str(user_id)] = {
-                    "reason": reason,
-                    "time": time.time()
-                }
-                safe_save_json(DATA_FILE, data)
-                vk.messages_send(peer_id, f"🛌 {await get_display_name(user_id)} отошел: {reason}")
-            except Exception as e:
-                logger.error(f"Ошибка afk: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.27 back - вернулся
-        if command == "back" or command == "вернулся":
-            try:
-                if str(user_id) in data.get("afk_users", {}):
-                    del data["afk_users"][str(user_id)]
-                    safe_save_json(DATA_FILE, data)
-                    vk.messages_send(peer_id, f"👋 {await get_display_name(user_id)} вернулся!")
-                else:
-                    vk.messages_send(peer_id, "❌ Вы не были в AFK")
-            except Exception as e:
-                logger.error(f"Ошибка back: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.28 timestamp - время
-        if command == "time" or command == "время":
-            try:
-                now = datetime.now()
-                tz = data["settings"].get("timezone", "UTC+3")
-                vk.messages_send(peer_id, f"🕐 Текущее время: {now.strftime('%H:%M:%S')}\n📅 Дата: {now.strftime('%d.%m.%Y')}\n🌍 Часовой пояс: {tz}")
-            except Exception as e:
-                logger.error(f"Ошибка time: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.29 poll - опрос
-        if command == "poll" or command == "опрос":
-            try:
-                if len(args) < 2:
-                    vk.messages_send(peer_id, "❌ Использование: !poll [вопрос] | [вариант1] | [вариант2] | ...")
-                    return
-                
-                parts = " ".join(args).split("|")
-                question = parts[0].strip()
-                options = [opt.strip() for opt in parts[1:] if opt.strip()]
-                
-                if len(options) < 2:
-                    vk.messages_send(peer_id, "❌ Нужно минимум 2 варианта!")
-                    return
-                
-                poll_text = f"📊 **Опрос:** {question}\n\n"
-                for i, option in enumerate(options, 1):
-                    poll_text += f"{i}. {option}\n"
-                poll_text += "\nГолосуйте в ответе!"
-                
-                # Сохранение опроса
-                if "polls" not in data:
-                    data["polls"] = {}
-                poll_id = str(int(time.time()))
-                data["polls"][poll_id] = {
-                    "question": question,
-                    "options": options,
-                    "votes": {},
-                    "created_by": user_id,
-                    "created_at": time.time()
-                }
-                safe_save_json(DATA_FILE, data)
-                vk.messages_send(peer_id, poll_text)
-            except Exception as e:
-                logger.error(f"Ошибка poll: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.30 vote - голосовать
-        if command == "vote" or command == "голос":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !vote [номер варианта]")
-                    return
-                
-                # Поиск активного опроса
-                active_poll = None
-                poll_id = None
-                for pid, poll in data.get("polls", {}).items():
-                    if poll.get("created_at", 0) > time.time() - 3600:  # Активен час
-                        active_poll = poll
-                        poll_id = pid
-                        break
-                
-                if not active_poll:
-                    vk.messages_send(peer_id, "📋 Нет активных опросов")
-                    return
-                
-                choice = int(args[0]) - 1
-                if choice < 0 or choice >= len(active_poll["options"]):
-                    vk.messages_send(peer_id, "❌ Неверный номер варианта!")
-                    return
-                
-                if "votes" not in active_poll:
-                    active_poll["votes"] = {}
-                active_poll["votes"][str(user_id)] = choice
-                safe_save_json(DATA_FILE, data)
-                
-                vk.messages_send(peer_id, f"✅ Ваш голос учтен! Вы выбрали: {active_poll['options'][choice]}")
-            except ValueError:
-                vk.messages_send(peer_id, "❌ Ошибка: номер должен быть числом!")
-            except Exception as e:
-                logger.error(f"Ошибка vote: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.31 poll_results - результаты опроса
-        if command == "poll_results" or command == "результаты_опроса":
-            try:
-                active_poll = None
-                for pid, poll in data.get("polls", {}).items():
-                    if poll.get("created_at", 0) > time.time() - 3600:
-                        active_poll = poll
-                        break
-                
-                if not active_poll:
-                    vk.messages_send(peer_id, "📋 Нет активных опросов")
-                    return
-                
-                votes = active_poll.get("votes", {})
-                total = len(votes)
-                results_text = f"📊 **Результаты опроса:**\n{active_poll['question']}\n\n"
-                
-                for i, option in enumerate(active_poll["options"]):
-                    count = sum(1 for v in votes.values() if v == i)
-                    percent = (count / total * 100) if total > 0 else 0
-                    results_text += f"{i+1}. {option}: {count} голосов ({percent:.1f}%)\n"
-                
-                results_text += f"\nВсего голосов: {total}"
-                vk.messages_send(peer_id, results_text)
-            except Exception as e:
-                logger.error(f"Ошибка poll_results: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.32 rps - камень-ножницы-бумага
-        if command == "rps":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !rps [камень|ножницы|бумага]")
-                    return
-                
-                choices = ["камень", "ножницы", "бумага"]
-                user_choice = args[0].lower()
-                
-                if user_choice not in choices:
-                    vk.messages_send(peer_id, "❌ Доступные варианты: камень, ножницы, бумага")
-                    return
-                
-                bot_choice = random.choice(choices)
-                
-                if user_choice == bot_choice:
-                    result = "Ничья!"
-                elif (user_choice == "камень" and bot_choice == "ножницы") or \
-                     (user_choice == "ножницы" and bot_choice == "бумага") or \
-                     (user_choice == "бумага" and bot_choice == "камень"):
-                    result = "Вы выиграли! 🎉"
-                else:
-                    result = "Вы проиграли! 😢"
-                
-                vk.messages_send(peer_id, f"🎮 {await get_display_name(user_id)} выбрал {user_choice}\n🤖 Бот выбрал {bot_choice}\n{result}")
-            except Exception as e:
-                logger.error(f"Ошибка rps: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.33 random - случайное число
-        if command == "random" or command == "рандом":
-            try:
-                if len(args) >= 2 and args[0].isdigit() and args[1].isdigit():
-                    min_num = int(args[0])
-                    max_num = int(args[1])
-                else:
-                    min_num = 1
-                    max_num = 100
-                
-                if min_num > max_num:
-                    min_num, max_num = max_num, min_num
-                
-                result = random.randint(min_num, max_num)
-                vk.messages_send(peer_id, f"🔢 Случайное число от {min_num} до {max_num}: {result}")
-            except Exception as e:
-                logger.error(f"Ошибка random: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.34 choose - выбор
-        if command == "choose" or command == "выбери":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !choose [вариант1] | [вариант2] | ...")
-                    return
-                
-                parts = " ".join(args).split("|")
-                options = [opt.strip() for opt in parts if opt.strip()]
-                
-                if len(options) < 2:
-                    vk.messages_send(peer_id, "❌ Нужно минимум 2 варианта!")
-                    return
-                
-                chosen = random.choice(options)
-                vk.messages_send(peer_id, f"🤔 Я выбираю: {chosen}")
-            except Exception as e:
-                logger.error(f"Ошибка choose: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.35 calc - калькулятор
-        if command == "calc" or command == "калькулятор":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !calc [выражение]")
-                    return
-                
-                expression = " ".join(args)
-                # Безопасное вычисление
-                allowed = set("0123456789+-*/() .")
-                if not all(c in allowed for c in expression):
-                    vk.messages_send(peer_id, "❌ Недопустимые символы!")
-                    return
-                
-                result = eval(expression)
-                vk.messages_send(peer_id, f"📐 {expression} = {result}")
-            except Exception as e:
-                vk.messages_send(peer_id, f"❌ Ошибка вычисления!")
-                logger.error(f"Ошибка calc: {e}")
-            return
-        
-        # 3.36 uptime - время работы
-        if command == "uptime":
-            try:
-                start_time = config.get("start_time", time.time())
-                uptime = int(time.time() - start_time)
-                days = uptime // 86400
-                hours = (uptime % 86400) // 3600
-                minutes = (uptime % 3600) // 60
-                seconds = uptime % 60
-                
-                vk.messages_send(peer_id, f"⏱ Время работы: {days}д {hours}ч {minutes}м {seconds}с")
-            except Exception as e:
-                logger.error(f"Ошибка uptime: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.37 echo - эхо
-        if command == "echo":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !echo [текст]")
-                    return
-                
-                text = " ".join(args)
-                vk.messages_send(peer_id, text)
-            except Exception as e:
-                logger.error(f"Ошибка echo: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.38 count - подсчет символов
-        if command == "count" or command == "счет":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !count [текст]")
-                    return
-                
-                text = " ".join(args)
-                chars = len(text)
-                words = len(text.split())
-                lines = text.count("\n") + 1
-                
-                vk.messages_send(peer_id, f"📊 **Статистика текста:**\n📝 Символов: {chars}\n📖 Слов: {words}\n📄 Строк: {lines}")
-            except Exception as e:
-                logger.error(f"Ошибка count: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.39 wordle - игра в слова
-        if command == "wordle":
-            try:
-                target_word = "привет"  # Простая версия
-                guess = args[0].lower() if args else ""
-                
-                if not guess:
-                    vk.messages_send(peer_id, "❌ Использование: !wordle [слово]\nЗагадано слово из 6 букв")
-                    return
-                
-                if len(guess) != len(target_word):
-                    vk.messages_send(peer_id, f"❌ Слово должно быть из {len(target_word)} букв!")
-                    return
-                
-                result = ""
-                for i, letter in enumerate(guess):
-                    if letter == target_word[i]:
-                        result += "🟩"
-                    elif letter in target_word:
-                        result += "🟨"
-                    else:
-                        result += "⬜"
-                
-                if guess == target_word:
-                    result += "\n🎉 Поздравляю! Вы угадали слово!"
-                else:
-                    result += f"\nЗагадано: {target_word}"
-                
-                vk.messages_send(peer_id, result)
-            except Exception as e:
-                logger.error(f"Ошибка wordle: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.40 todo - список дел
-        if command == "todo":
-            try:
-                if not args:
-                    todos = data.get("todos", {}).get(str(user_id), [])
-                    if todos:
-                        text = "📋 **Ваш список дел:**\n"
-                        for i, task in enumerate(todos, 1):
-                            text += f"{i}. {task}\n"
-                        vk.messages_send(peer_id, text)
-                    else:
-                        vk.messages_send(peer_id, "📋 Список дел пуст")
-                    return
-                
-                action = args[0].lower()
-                task = " ".join(args[1:]) if len(args) > 1 else ""
-                
-                if "todos" not in data:
-                    data["todos"] = {}
-                
-                if action == "add" or action == "добавить":
-                    if not task:
-                        vk.messages_send(peer_id, "❌ Использование: !todo add [задача]")
-                        return
-                    data["todos"][str(user_id)] = data["todos"].get(str(user_id), [])
-                    data["todos"][str(user_id)].append(task)
-                    safe_save_json(DATA_FILE, data)
-                    vk.messages_send(peer_id, f"✅ Задача добавлена: {task}")
-                
-                elif action == "remove" or action == "удалить":
-                    if not args[1].isdigit():
-                        vk.messages_send(peer_id, "❌ Использование: !todo remove [номер]")
-                        return
-                    idx = int(args[1]) - 1
-                    if str(user_id) in data["todos"] and idx < len(data["todos"][str(user_id)]):
-                        removed = data["todos"][str(user_id)].pop(idx)
-                        safe_save_json(DATA_FILE, data)
-                        vk.messages_send(peer_id, f"✅ Задача удалена: {removed}")
-                    else:
-                        vk.messages_send(peer_id, "❌ Неверный номер задачи!")
-                
-                elif action == "clear" or action == "очистить":
-                    if str(user_id) in data["todos"]:
-                        data["todos"][str(user_id)] = []
-                        safe_save_json(DATA_FILE, data)
-                        vk.messages_send(peer_id, "✅ Список дел очищен!")
-                    else:
-                        vk.messages_send(peer_id, "📋 Список дел пуст")
-                
-                else:
-                    vk.messages_send(peer_id, "❌ Использование: !todo [add|remove|clear]")
-            except Exception as e:
-                logger.error(f"Ошибка todo: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.41 remind - напоминание
+        # 3.24 remind - напоминание
         if command == "remind" or command == "напомни":
             try:
                 if len(args) < 2:
@@ -2616,7 +2246,7 @@ async def process_message(message_data: dict):
                 vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
             return
         
-        # 3.42 remind_list - список напоминаний
+        # 3.25 remind_list - список напоминаний
         if command == "remind_list" or command == "напоминания":
             try:
                 reminders = data.get("reminders", {})
@@ -2639,7 +2269,7 @@ async def process_message(message_data: dict):
                 vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
             return
         
-        # 3.43 remind_cancel - отмена напоминания
+        # 3.26 remind_cancel - отмена напоминания
         if command == "remind_cancel" or command == "отмена_напоминания":
             try:
                 if not args:
@@ -2658,49 +2288,28 @@ async def process_message(message_data: dict):
                 vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
             return
         
-        # 3.44 calc - уже есть выше
-        
-        # 3.45 weather - погода (пример)
-        if command == "weather" or command == "погода":
-            try:
-                city = " ".join(args) if args else "Москва"
-                # Используем бесплатное API погоды
-                try:
-                    response = requests.get(
-                        f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid=Ваш_ключ_здесь&units=metric",
-                        timeout=10
-                    )
-                    if response.status_code == 200:
-                        data_weather = response.json()
-                        temp = data_weather["main"]["temp"]
-                        desc = data_weather["weather"][0]["description"]
-                        vk.messages_send(peer_id, f"🌤 Погода в {city}: {temp}°C, {desc}")
-                    else:
-                        vk.messages_send(peer_id, f"❌ Не удалось получить погоду для {city}")
-                except:
-                    vk.messages_send(peer_id, "🌤 Погода: солнечно, 25°C (данные недоступны)")
-            except Exception as e:
-                logger.error(f"Ошибка weather: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.46 translate - перевод (пример)
-        if command == "translate" or command == "перевод":
+        # 3.27 calc - калькулятор
+        if command == "calc" or command == "калькулятор":
             try:
                 if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !translate [язык] [текст]")
+                    vk.messages_send(peer_id, "❌ Использование: !calc [выражение]")
                     return
                 
-                lang = args[0]
-                text = " ".join(args[1:])
-                # Здесь можно использовать API перевода
-                vk.messages_send(peer_id, f"📝 Перевод на {lang}: {text} (используйте Google Translate API)")
+                expression = " ".join(args)
+                # Безопасное вычисление
+                allowed = set("0123456789+-*/() .")
+                if not all(c in allowed for c in expression):
+                    vk.messages_send(peer_id, "❌ Недопустимые символы!")
+                    return
+                
+                result = eval(expression)
+                vk.messages_send(peer_id, f"📐 {expression} = {result}")
             except Exception as e:
-                logger.error(f"Ошибка translate: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
+                vk.messages_send(peer_id, f"❌ Ошибка вычисления!")
+                logger.error(f"Ошибка calc: {e}")
             return
         
-        # 3.47 joke - шутка
+        # 3.28 joke - шутка
         if command == "joke" or command == "шутка":
             try:
                 jokes = [
@@ -2708,12 +2317,7 @@ async def process_message(message_data: dict):
                     "Как программист ловит рыбу? Он ее 'отлаживает'.",
                     "Сколько программистов нужно, чтобы поменять лампочку? Ни одного, это аппаратная проблема.",
                     "Почему 10 боится 7? Потому что 7 8 9.",
-                    "Как назвать программиста, который не умеет кодить? Безработным.",
-                    "Почему программисты путают Хэллоуин и Рождество? Потому что 31 Oct = 25 Dec.",
-                    "Что говорит программист, когда видит ошибку? 'Это не баг, это фича'.",
-                    "Как программист выходит из дома? Через интерфейс.",
-                    "Почему программисты не играют в покер? Боятся, что вместо карт получат баги.",
-                    "Как отличить программиста от не-программиста? Программист ответит 'он' или 'она'."
+                    "Как назвать программиста, который не умеет кодить? Безработным."
                 ]
                 joke = random.choice(jokes)
                 vk.messages_send(peer_id, f"😂 {joke}")
@@ -2722,209 +2326,46 @@ async def process_message(message_data: dict):
                 vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
             return
         
-        # 3.48 quote - цитата
-        if command == "quote" or command == "цитата":
+        # 3.29 random - случайное число
+        if command == "random" or command == "рандом":
             try:
-                quotes = [
-                    "Будьте собой, все остальные роли уже заняты. - Оскар Уайльд",
-                    "Жизнь — это то, что происходит с вами, пока вы строите планы. - Джон Леннон",
-                    "Сложнее всего начать действовать, все остальное зависит только от упорства. - Амелия Эрхарт",
-                    "Не бойтесь ошибаться, бойтесь повторять ошибки. - Теодор Рузвельт",
-                    "Единственный способ делать великую работу — любить то, что вы делаете. - Стив Джобс",
-                    "В мире есть две бесконечные вещи: Вселенная и человеческая глупость. - Альберт Эйнштейн",
-                    "Живи так, как будто умрешь завтра. Учись так, как будто будешь жить вечно. - Махатма Ганди",
-                    "Счастье — это когда то, что вы думаете, говорите и делаете, находится в гармонии. - Махатма Ганди",
-                    "Успех — это способность идти от неудачи к неудаче, не теряя энтузиазма. - Уинстон Черчилль",
-                    "Самый важный момент в жизни — это момент, когда вы решаете, что пришло время измениться."
-                ]
-                quote = random.choice(quotes)
-                vk.messages_send(peer_id, f"📖 {quote}")
+                if len(args) >= 2 and args[0].isdigit() and args[1].isdigit():
+                    min_num = int(args[0])
+                    max_num = int(args[1])
+                else:
+                    min_num = 1
+                    max_num = 100
+                
+                if min_num > max_num:
+                    min_num, max_num = max_num, min_num
+                
+                result = random.randint(min_num, max_num)
+                vk.messages_send(peer_id, f"🔢 Случайное число от {min_num} до {max_num}: {result}")
             except Exception as e:
-                logger.error(f"Ошибка quote: {e}")
+                logger.error(f"Ошибка random: {e}")
                 vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
             return
         
-        # 3.49 motto - девиз
-        if command == "motto" or command == "девиз":
-            try:
-                mottos = [
-                    "Быть или не быть — вот в чем вопрос.",
-                    "Carpe diem! (Лови момент!)",
-                    "И не важно, что думают другие.",
-                    "Живи, пока молодой.",
-                    "Сделай невозможное.",
-                    "Мечты должны быть большими.",
-                    "Не откладывай на завтра.",
-                    "Сила в правде.",
-                    "Верь в себя.",
-                    "Иди вперед, несмотря ни на что."
-                ]
-                motto = random.choice(mottos)
-                vk.messages_send(peer_id, f"💪 Ваш девиз: {motto}")
-            except Exception as e:
-                logger.error(f"Ошибка motto: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.50 fact - факт
-        if command == "fact" or command == "факт":
-            try:
-                facts = [
-                    "У осьминога три сердца.",
-                    "У страуса глаза больше мозга.",
-                    "Волки не воют на луну, они воют для общения.",
-                    "У кошек 32 мышцы в ушах.",
-                    "У дельфинов есть имена друг для друга.",
-                    "Слоны — единственные млекопитающие, которые не могут прыгать.",
-                    "У людей меньше волос, чем у шимпанзе.",
-                    "Гепарды могут разгоняться до 100 км/ч за 3 секунды.",
-                    "Пингвины могут нырять на глубину до 500 метров.",
-                    "У муравьев нет ушей, они слышат вибрациями."
-                ]
-                fact = random.choice(facts)
-                vk.messages_send(peer_id, f"📚 Факт: {fact}")
-            except Exception as e:
-                logger.error(f"Ошибка fact: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.51 urban - сленг (пример)
-        if command == "urban" or command == "сленг":
+        # 3.30 choose - выбор
+        if command == "choose" or command == "выбери":
             try:
                 if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !urban [слово]")
+                    vk.messages_send(peer_id, "❌ Использование: !choose [вариант1] | [вариант2] | ...")
                     return
                 
-                word = " ".join(args)
-                # Здесь можно использовать Urban Dictionary API
-                vk.messages_send(peer_id, f"📖 Значение '{word}': Используйте Urban Dictionary API для реальных данных")
-            except Exception as e:
-                logger.error(f"Ошибка urban: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.52 channel - информация о канале
-        if command == "channel" or command == "канал":
-            try:
-                group_info = vk.groups_get_by_id()
-                if "error" not in group_info and group_info:
-                    group = group_info[0]
-                    vk.messages_send(peer_id, f"📢 **Группа:** {group.get('name', '')}\n🔗 ID: {group.get('id', '')}\n👥 Участников: {group.get('members_count', 0)}")
-                else:
-                    vk.messages_send(peer_id, "❌ Не удалось получить информацию о группе")
-            except Exception as e:
-                logger.error(f"Ошибка channel: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-        
-        # 3.53 donate - донат
-        if command == "donate" or command == "донат":
-            try:
-                if not args:
-                    vk.messages_send(peer_id, "❌ Использование: !donate [ID] [сумма]")
+                parts = " ".join(args).split("|")
+                options = [opt.strip() for opt in parts if opt.strip()]
+                
+                if len(options) < 2:
+                    vk.messages_send(peer_id, "❌ Нужно минимум 2 варианта!")
                     return
                 
-                target_id = int(args[0])
-                amount = int(args[1]) if len(args) > 1 else 100
-                
-                if amount <= 0:
-                    vk.messages_send(peer_id, "❌ Сумма должна быть положительной!")
-                    return
-                
-                if await remove_money(user_id, amount):
-                    await add_money(target_id, amount)
-                    vk.messages_send(peer_id, f"✅ {await get_display_link(user_id)} перевел {amount} монет {await get_display_link(target_id)}!")
-                else:
-                    vk.messages_send(peer_id, f"❌ Недостаточно денег! Нужно: {amount}")
-            except ValueError:
-                vk.messages_send(peer_id, "❌ Ошибка: ID и сумма должны быть числами!")
+                chosen = random.choice(options)
+                vk.messages_send(peer_id, f"🤔 Я выбираю: {chosen}")
             except Exception as e:
-                logger.error(f"Ошибка donate: {e}")
+                logger.error(f"Ошибка choose: {e}")
                 vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
             return
-        
-        # 3.54 rank - ранг
-        if command == "rank" or command == "ранг":
-            try:
-                level = get_user_level(user_id)
-                if level < 5:
-                    rank = "🟢 Новичок"
-                elif level < 10:
-                    rank = "🔵 Ученик"
-                elif level < 20:
-                    rank = "🟣 Опытный"
-                elif level < 35:
-                    rank = "🟠 Мастер"
-                elif level < 50:
-                    rank = "🔴 Эксперт"
-                else:
-                    rank = "👑 Легенда"
-                
-                vk.messages_send(peer_id, f"🏅 {await get_display_name(user_id)} — {rank} (уровень {level})")
-            except Exception as e:
-                logger.error(f"Ошибка rank: {e}")
-                vk.messages_send(peer_id, "❌ Внутренняя ошибка!")
-            return
-
-# ============================================================
-# ОБРАБОТКА НАПОМИНАНИЙ
-# ============================================================
-async def check_reminders():
-    """Проверка напоминаний"""
-    try:
-        now = time.time()
-        for rid, reminder in list(data.get("reminders", {}).items()):
-            if reminder.get("time", 0) <= now:
-                user_id = reminder.get("user_id")
-                peer_id = reminder.get("peer_id")
-                text = reminder.get("text", "Напоминание")
-                
-                try:
-                    vk.messages_send(peer_id, f"⏰ **Напоминание для {await get_display_link(user_id)}:**\n{text}")
-                except:
-                    pass
-                
-                del data["reminders"][rid]
-                safe_save_json(DATA_FILE, data)
-    except Exception as e:
-        logger.error(f"Ошибка проверки напоминаний: {e}")
-
-# ============================================================
-# ОБРАБОТКА ВХОДА/ВЫХОДА
-# ============================================================
-async def handle_group_join(event: dict):
-    """Обработка входа в беседу"""
-    try:
-        user_id = event.get("user_id")
-        peer_id = event.get("peer_id")
-        
-        if not user_id or not peer_id:
-            return
-        
-        welcome = data["settings"].get("welcome", "👋 Добро пожаловать в чат, {user}!")
-        name = await get_display_name(user_id)
-        welcome_text = welcome.replace("{user}", name)
-        
-        vk.messages_send(peer_id, welcome_text)
-    except Exception as e:
-        logger.error(f"Ошибка обработки входа: {e}")
-
-async def handle_group_leave(event: dict):
-    """Обработка выхода из беседы"""
-    try:
-        user_id = event.get("user_id")
-        peer_id = event.get("peer_id")
-        
-        if not user_id or not peer_id:
-            return
-        
-        farewell = data["settings"].get("farewell", "👋 Пока, {user}!")
-        name = await get_display_name(user_id)
-        farewell_text = farewell.replace("{user}", name)
-        
-        vk.messages_send(peer_id, farewell_text)
-    except Exception as e:
-        logger.error(f"Ошибка обработки выхода: {e}")
 
 # ============================================================
 # ОСНОВНОЙ ЦИКЛ
@@ -3021,14 +2462,6 @@ async def main():
                     elif update_type == "group_leave":
                         # Обработка выхода из беседы
                         await handle_group_leave(update.get("object", {}))
-                    
-                    elif update_type == "message_edit":
-                        # Обработка редактирования сообщения
-                        pass
-                    
-                    elif update_type == "message_typing_state":
-                        # Обработка набора текста
-                        pass
                     
                 except Exception as e:
                     logger.error(f"Ошибка обработки обновления: {e}")
