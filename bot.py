@@ -133,13 +133,11 @@ class VKAPI:
             "server": server,
             "hash": hash
         })
-    
-    def messages_get_by_id(self, message_ids):
-        return self._request("messages.getById", {"message_ids": message_ids})
 
 vk = VKAPI(TOKEN, GROUP_ID)
 
-async def download_and_upload_photo(photo_url):
+def upload_photo_to_vk(photo_url):
+    """Загружает фото на сервер VK (синхронно)"""
     try:
         response = requests.get(photo_url, timeout=10)
         response.raise_for_status()
@@ -166,8 +164,7 @@ async def download_and_upload_photo(photo_url):
             return None
         
         photo = saved[0]
-        attachment = f"photo{photo['owner_id']}_{photo['id']}"
-        return attachment
+        return f"photo{photo['owner_id']}_{photo['id']}"
     except Exception as e:
         logger.error(f"Upload error: {e}")
         return None
@@ -189,14 +186,15 @@ def get_photos_from_msg(msg):
                     photos.append(photo_url)
     return photos
 
-async def upload_multiple_photos(photo_urls):
-    attachments = []
-    for url in photo_urls[:30]:
-        attachment = await download_and_upload_photo(url)
-        if attachment:
-            attachments.append(attachment)
-        await asyncio.sleep(0.2)
-    return attachments
+def get_reply_info(msg):
+    """Получает информацию о ответе (синхронно)"""
+    try:
+        reply_msg = msg.get("reply_message")
+        if isinstance(reply_msg, dict):
+            return reply_msg.get("from_id", 0), reply_msg
+        return 0, None
+    except:
+        return 0, None
 
 # ============================================================
 # 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
@@ -378,35 +376,6 @@ async def check_spam(user_id, peer_id):
     save_data(data)
     return False
 
-async def get_reply_user_id(msg):
-    """Безопасно получает ID пользователя, которому ответили"""
-    try:
-        reply_msg = msg.get("reply_message")
-        if isinstance(reply_msg, dict):
-            return reply_msg.get("from_id", 0)
-        elif isinstance(reply_msg, int):
-            # Если это ID, получаем сообщение через API
-            result = vk.messages_get_by_id(reply_msg)
-            if result and "items" in result and result["items"]:
-                return result["items"][0].get("from_id", 0)
-        return 0
-    except:
-        return 0
-
-async def get_reply_message(msg):
-    """Безопасно получает сообщение, на которое ответили"""
-    try:
-        reply_msg = msg.get("reply_message")
-        if isinstance(reply_msg, dict):
-            return reply_msg
-        elif isinstance(reply_msg, int):
-            result = vk.messages_get_by_id(reply_msg)
-            if result and "items" in result and result["items"]:
-                return result["items"][0]
-        return None
-    except:
-        return None
-
 async def process_message(message_data):
     try:
         if not isinstance(message_data, dict):
@@ -417,8 +386,7 @@ async def process_message(message_data):
             peer_id = msg.get("peer_id", 0)
             user_id = msg.get("from_id", 0)
             text = msg.get("text", "")
-            reply_user_id = await get_reply_user_id(msg)
-            reply_msg = await get_reply_message(msg)
+            reply_user_id, reply_msg = get_reply_info(msg)
         else:
             return
         
@@ -490,13 +458,11 @@ async def process_message(message_data):
                 reply_photos = get_photos_from_msg(reply_msg)
                 if reply_photos:
                     photos_to_upload.extend(reply_photos)
-                    await vk.messages_send(peer_id, f"📸 Найдено {len(reply_photos)} фото в ответе")
             
             # 2. Фото из текущего сообщения
             current_photos = get_photos_from_msg(msg)
             if current_photos:
                 photos_to_upload.extend(current_photos)
-                await vk.messages_send(peer_id, f"📸 Найдено {len(current_photos)} фото в сообщении")
             
             if not photos_to_upload:
                 await vk.messages_send(peer_id, "❌ Нет фото! Прикрепите фото или ответьте на сообщение с фото.")
@@ -507,10 +473,20 @@ async def process_message(message_data):
             
             await vk.messages_send(peer_id, f"⏳ Загрузка {len(photos_to_upload)} фото...")
             
-            attachments = await upload_multiple_photos(photos_to_upload)
+            attachments = []
+            failed = 0
+            for i, url in enumerate(photos_to_upload):
+                attachment = upload_photo_to_vk(url)
+                if attachment:
+                    attachments.append(attachment)
+                else:
+                    failed += 1
+                # Обновляем статус каждые 5 фото
+                if (i + 1) % 5 == 0 or (i + 1) == len(photos_to_upload):
+                    await vk.messages_send(peer_id, f"⏳ Загружено {len(attachments)}/{len(photos_to_upload)} фото...")
             
             if not attachments:
-                await vk.messages_send(peer_id, "❌ Не удалось загрузить фото!")
+                await vk.messages_send(peer_id, f"❌ Не удалось загрузить ни одного фото! Ошибок: {failed}")
                 return
             
             if rp_cmd not in data["rp_images"]:
@@ -518,11 +494,11 @@ async def process_message(message_data):
             data["rp_images"][rp_cmd].extend(attachments)
             save_data(data)
             
-            await vk.messages_send(
-                peer_id, 
-                f"✅ Загружено {len(attachments)} фото для '{rp_cmd}'!", 
-                attachment=attachments[0]
-            )
+            status_msg = f"✅ Загружено {len(attachments)} фото для '{rp_cmd}'!"
+            if failed > 0:
+                status_msg += f"\n⚠️ {failed} фото не загрузились"
+            
+            await vk.messages_send(peer_id, status_msg, attachment=attachments[0])
             return
         
         # ============================================================
