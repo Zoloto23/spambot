@@ -30,15 +30,14 @@ API_VERSION = "5.199"
 DATA_FILE = "rp_bot_data.json"
 
 # ============================================================
-# 🤖 БЕСПЛАТНЫЙ AI (DEEPSEEK)
+# 🤖 AI (ЧИТАЕТ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ)
 # ============================================================
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-3658b1951db741feafae6f9b3232523c")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")  # <-- читает из Railway
 
 async def ask_deepseek(prompt: str) -> str:
-    """Запрос к бесплатному DeepSeek API"""
     if not DEEPSEEK_API_KEY:
-        return "❌ API ключ не найден! Получите бесплатный ключ: https://platform.deepseek.com/api_keys"
+        return "❌ API ключ не найден! Добавьте DEEPSEEK_API_KEY в переменные Railway"
     
     try:
         url = "https://api.deepseek.com/v1/chat/completions"
@@ -75,7 +74,7 @@ async def ask_deepseek(prompt: str) -> str:
         return f"❌ Ошибка: {str(e)[:100]}"
 
 # ============================================================
-# ЗАГРУЗКА ДАННЫХ
+# ОСТАЛЬНОЙ КОД БОТА (полный)
 # ============================================================
 
 def load_data():
@@ -116,10 +115,6 @@ def user_link(user_id, name=None):
 
 def get_nick(user_id):
     return data.get("nicks", {}).get(str(user_id), None)
-
-# ============================================================
-# VK API
-# ============================================================
 
 class VKAPI:
     def __init__(self, token, user_token, group_id):
@@ -310,10 +305,6 @@ async def check_spam(user_id, peer_id):
     save_data(data)
     return False
 
-# ============================================================
-# ОСНОВНОЙ ОБРАБОТЧИК
-# ============================================================
-
 async def process_message(message_data):
     try:
         if not isinstance(message_data, dict):
@@ -378,6 +369,10 @@ async def process_message(message_data):
         if command == "ии":
             if len(text.split()) < 2:
                 vk.messages_send(peer_id, "❌ Напиши вопрос после !ии\nПример: !ии Как дела?")
+                return
+            
+            if not DEEPSEEK_API_KEY:
+                vk.messages_send(peer_id, "❌ API ключ не найден! Добавьте DEEPSEEK_API_KEY в переменные Railway")
                 return
             
             prompt = text[3:].strip()
@@ -475,16 +470,12 @@ async def process_message(message_data):
     except Exception as e:
         logger.error(f"Process error: {e}")
 
-# ============================================================
-# ЗАПУСК БОТА
-# ============================================================
-
 async def main():
     logger.info("🚀 АХУЕННЫЙ RP БОТ ЗАПУЩЕН")
     logger.info(f"Group: {GROUP_ID}")
     logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
     
-    if DEEPSEEK_API_KEY and DEEPSEEK_API_KEY != "sk-3658b1951db741feafae6f9b3232523c":
+    if DEEPSEEK_API_KEY:
         logger.info("✅ DeepSeek AI подключен")
     else:
         logger.warning("⚠️ DEEPSEEK_API_KEY не установлен! Добавьте его для работы !ии")
