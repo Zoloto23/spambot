@@ -29,6 +29,55 @@ if not GROUP_ID:
 API_VERSION = "5.199"
 DATA_FILE = "rp_bot_data.json"
 
+# ============================================================
+# 🤖 БЕСПЛАТНЫЙ AI (DEEPSEEK)
+# ============================================================
+
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-3658b1951db741feafae6f9b3232523c")
+
+async def ask_deepseek(prompt: str) -> str:
+    """Запрос к бесплатному DeepSeek API"""
+    if not DEEPSEEK_API_KEY:
+        return "❌ API ключ не найден! Получите бесплатный ключ: https://platform.deepseek.com/api_keys"
+    
+    try:
+        url = "https://api.deepseek.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": "Ты дружелюбный помощник. Отвечай кратко и по делу."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1000
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        
+        if "choices" in result and result["choices"]:
+            return result["choices"][0]["message"]["content"]
+        else:
+            return "❌ Нет ответа от DeepSeek"
+            
+    except requests.exceptions.Timeout:
+        return "❌ Превышено время ожидания"
+    except requests.exceptions.RequestException as e:
+        logger.error(f"DeepSeek error: {e}")
+        return f"❌ Ошибка API: {str(e)[:100]}"
+    except Exception as e:
+        logger.error(f"DeepSeek error: {e}")
+        return f"❌ Ошибка: {str(e)[:100]}"
+
+# ============================================================
+# ЗАГРУЗКА ДАННЫХ
+# ============================================================
+
 def load_data():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -67,6 +116,10 @@ def user_link(user_id, name=None):
 
 def get_nick(user_id):
     return data.get("nicks", {}).get(str(user_id), None)
+
+# ============================================================
+# VK API
+# ============================================================
 
 class VKAPI:
     def __init__(self, token, user_token, group_id):
@@ -141,46 +194,6 @@ def get_reply_info(msg):
         return 0, None
     except:
         return 0, None
-
-# ============================================================
-# 🤖 ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ (JustRouter)
-# ============================================================
-
-AI_API_KEY = "jr_2d40e77fb63505cc3e8c1c0cc772ec4b103cdc5b1386be37"
-AI_MODEL = "deepseek/deepseek-v4-flash"
-
-async def ask_ai(prompt: str) -> str:
-    """Отправляет запрос к JustRouter API и возвращает ответ"""
-    try:
-        url = "https://justrouter.ru/api/v1/chat"
-        headers = {
-            "X-Api-Key": AI_API_KEY,
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model_id": AI_MODEL,
-            "content": prompt
-        }
-        
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
-        result = response.json()
-        
-        if "response" in result:
-            return result["response"]
-        elif "message" in result:
-            return result["message"]
-        else:
-            return "❌ Неизвестный формат ответа от API"
-            
-    except requests.exceptions.Timeout:
-        return "❌ Превышено время ожидания ответа от нейросети"
-    except requests.exceptions.RequestException as e:
-        logger.error(f"AI request error: {e}")
-        return f"❌ Ошибка запроса: {str(e)[:100]}"
-    except Exception as e:
-        logger.error(f"AI error: {e}")
-        return f"❌ Ошибка: {str(e)[:100]}"
 
 # ============================================================
 # 🎭 RP ДЕЙСТВИЯ
@@ -297,6 +310,10 @@ async def check_spam(user_id, peer_id):
     save_data(data)
     return False
 
+# ============================================================
+# ОСНОВНОЙ ОБРАБОТЧИК
+# ============================================================
+
 async def process_message(message_data):
     try:
         if not isinstance(message_data, dict):
@@ -356,7 +373,7 @@ async def process_message(message_data):
         command = text[1:].strip().lower()
         
         # ============================================================
-        # 🤖 ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ
+        # 🤖 ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ (DEEPSEEK)
         # ============================================================
         if command == "ии":
             if len(text.split()) < 2:
@@ -364,9 +381,9 @@ async def process_message(message_data):
                 return
             
             prompt = text[3:].strip()
-            await vk.messages_send(peer_id, f"🤔 Думаю...")
+            vk.messages_send(peer_id, "🤔 Думаю...")
             
-            response = await ask_ai(prompt)
+            response = await ask_deepseek(prompt)
             
             if len(response) > 4000:
                 parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
@@ -444,8 +461,8 @@ async def process_message(message_data):
 !обнять сзади, !шепнуть на ухо, !раздеть, !массаж
 !поцеловать в шею, !лечь в кровать, !пригласить в душ
 
-🤖 Нейросеть:
-!ии [вопрос] — спросить у ИИ
+🤖 Нейросеть (БЕСПЛАТНО):
+!ии [вопрос] — спросить у DeepSeek AI
 
 📌 Чтобы применить к другому пользователю:
 Ответь на его сообщение + напиши команду
@@ -458,10 +475,19 @@ async def process_message(message_data):
     except Exception as e:
         logger.error(f"Process error: {e}")
 
+# ============================================================
+# ЗАПУСК БОТА
+# ============================================================
+
 async def main():
     logger.info("🚀 АХУЕННЫЙ RP БОТ ЗАПУЩЕН")
     logger.info(f"Group: {GROUP_ID}")
     logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
+    
+    if DEEPSEEK_API_KEY and DEEPSEEK_API_KEY != "sk-3658b1951db741feafae6f9b3232523c":
+        logger.info("✅ DeepSeek AI подключен")
+    else:
+        logger.warning("⚠️ DEEPSEEK_API_KEY не установлен! Добавьте его для работы !ии")
     
     try:
         info = vk.groups_get_by_id()
