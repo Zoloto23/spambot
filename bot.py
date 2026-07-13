@@ -367,6 +367,10 @@ async def get_reply_user_id(message_data):
 
 async def process_message(message_data):
     try:
+        # Проверяем структуру сообщения
+        if not isinstance(message_data, dict):
+            return
+        
         if "object" in message_data and "message" in message_data["object"]:
             msg = message_data["object"]["message"]
             peer_id = msg.get("peer_id", 0)
@@ -375,11 +379,7 @@ async def process_message(message_data):
             attachments = msg.get("attachments", [])
             reply_user_id = await get_reply_user_id(message_data)
         else:
-            peer_id = message_data.get("peer_id", 0)
-            user_id = message_data.get("from_id", 0)
-            text = message_data.get("text", "")
-            attachments = []
-            reply_user_id = 0
+            return
         
         if user_id < 0:
             return
@@ -423,23 +423,19 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, "❌ Нет прав для загрузки фото!")
                 return
             
-            # Получаем название команды
             rp_cmd = command[8:].strip()
             if not rp_cmd:
                 await vk.messages_send(peer_id, "❌ Укажите команду: !загрузи обнять")
                 return
             
-            # Проверяем, что команда существует
             if rp_cmd not in RP_ACTIONS:
                 await vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена")
                 return
             
-            # Проверяем, есть ли фото в сообщении
             if not attachments:
                 await vk.messages_send(peer_id, "❌ Прикрепите фото к сообщению!")
                 return
             
-            # Ищем фото среди вложений
             photo_attachment = None
             for att in attachments:
                 if att.get("type") == "photo":
@@ -458,11 +454,9 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, "❌ Не удалось загрузить фото!")
                 return
             
-            # Сохраняем фото для команды
             data["rp_images"][rp_cmd] = photo_attachment
             save_data(data)
             
-            # Отправляем уведомление с фото
             await vk.messages_send(peer_id, f"✅ Фото загружено для команды '{rp_cmd}'!", attachment=photo_attachment)
             return
         
