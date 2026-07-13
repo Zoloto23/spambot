@@ -143,6 +143,46 @@ def get_reply_info(msg):
         return 0, None
 
 # ============================================================
+# 🤖 ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ (JustRouter)
+# ============================================================
+
+AI_API_KEY = "jr_2d40e77fb63505cc3e8c1c0cc772ec4b103cdc5b1386be37"
+AI_MODEL = "deepseek/deepseek-v4-flash"
+
+async def ask_ai(prompt: str) -> str:
+    """Отправляет запрос к JustRouter API и возвращает ответ"""
+    try:
+        url = "https://justrouter.ru/api/v1/chat"
+        headers = {
+            "X-Api-Key": AI_API_KEY,
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model_id": AI_MODEL,
+            "content": prompt
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        
+        if "response" in result:
+            return result["response"]
+        elif "message" in result:
+            return result["message"]
+        else:
+            return "❌ Неизвестный формат ответа от API"
+            
+    except requests.exceptions.Timeout:
+        return "❌ Превышено время ожидания ответа от нейросети"
+    except requests.exceptions.RequestException as e:
+        logger.error(f"AI request error: {e}")
+        return f"❌ Ошибка запроса: {str(e)[:100]}"
+    except Exception as e:
+        logger.error(f"AI error: {e}")
+        return f"❌ Ошибка: {str(e)[:100]}"
+
+# ============================================================
 # 🎭 RP ДЕЙСТВИЯ
 # ============================================================
 
@@ -316,7 +356,28 @@ async def process_message(message_data):
         command = text[1:].strip().lower()
         
         # ============================================================
-        # 🎭 RP КОМАНДЫ (ТЕКСТ + ФОТО)
+        # 🤖 ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ
+        # ============================================================
+        if command == "ии":
+            if len(text.split()) < 2:
+                vk.messages_send(peer_id, "❌ Напиши вопрос после !ии\nПример: !ии Как дела?")
+                return
+            
+            prompt = text[3:].strip()
+            await vk.messages_send(peer_id, f"🤔 Думаю...")
+            
+            response = await ask_ai(prompt)
+            
+            if len(response) > 4000:
+                parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
+                for part in parts:
+                    vk.messages_send(peer_id, part)
+            else:
+                vk.messages_send(peer_id, response)
+            return
+        
+        # ============================================================
+        # 🎭 RP КОМАНДЫ
         # ============================================================
         if command in RP_ACTIONS:
             if reply_user_id and reply_user_id != user_id:
@@ -333,7 +394,6 @@ async def process_message(message_data):
             else:
                 result_text = f"{user_name} {action_desc} {target_name}!"
             
-            # Берем фото из data.json
             images = data.get("rp_images", {}).get(command, [])
             if images:
                 attachment = random.choice(images)
@@ -383,6 +443,9 @@ async def process_message(message_data):
 !задушить в объятиях, !потискать, !облизать, !поцеловать руку
 !обнять сзади, !шепнуть на ухо, !раздеть, !массаж
 !поцеловать в шею, !лечь в кровать, !пригласить в душ
+
+🤖 Нейросеть:
+!ии [вопрос] — спросить у ИИ
 
 📌 Чтобы применить к другому пользователю:
 Ответь на его сообщение + напиши команду
