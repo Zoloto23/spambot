@@ -15,12 +15,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN = os.environ.get("VK_TOKEN")
+TOKEN = os.environ.get("VK_GROUP_TOKEN")  # Групповой токен
 GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
 
 if not TOKEN:
-    logger.error("VK_TOKEN not set")
-    raise RuntimeError("VK_TOKEN not set")
+    logger.error("VK_GROUP_TOKEN not set")
+    raise RuntimeError("VK_GROUP_TOKEN not set")
 
 if not GROUP_ID:
     logger.error("VK_GROUP_ID not set")
@@ -48,7 +48,8 @@ def load_data():
                 "whitelist": ["vk.com", "youtube.com", "t.me"]
             },
             "message_history": {},
-            "user_stats": {}
+            "user_stats": {},
+            "rp_images": {}
         }
 
 def save_data(data):
@@ -137,10 +138,12 @@ class VKAPI:
 
 vk = VKAPI(TOKEN, GROUP_ID)
 
-RP_IMAGES = {}
+# ============================================================
+# 🎭 RP КОМАНДЫ С КАРТИНКАМИ (загружаются из альбома при старте)
+# ============================================================
 
 async def load_rp_images():
-    global RP_IMAGES
+    """Загружает картинки из альбома ВК"""
     owner_id = -GROUP_ID
     album_id = "311514872"
     
@@ -149,6 +152,7 @@ async def load_rp_images():
         logger.error(f"Album error: {result['error']}")
         return
     
+    count = 0
     for photo in result.get("items", []):
         text = photo.get("text", "").strip().lower()
         if text:
@@ -156,13 +160,25 @@ async def load_rp_images():
                 cmd = cmd.strip()
                 if cmd:
                     attachment = f"photo{photo['owner_id']}_{photo['id']}"
-                    RP_IMAGES[cmd] = attachment
+                    data["rp_images"][cmd] = attachment
+                    count += 1
                     logger.info(f"Loaded RP: {cmd}")
+    
+    save_data(data)
+    logger.info(f"Loaded {count} RP images from album")
+
+# ============================================================
+# 🎭 СТИКЕРЫ ДЛЯ КОМАНД
+# ============================================================
 
 STICKER_COMMANDS = {
     "сама": 100,      # Замени на ID стикера
     "бот": 101,       # Замени на ID стикера
 }
+
+# ============================================================
+# 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
+# ============================================================
 
 RP_ACTIONS = {
     "обнять": "обнял(а)",
@@ -391,10 +407,9 @@ async def process_message(message_data):
         if not text:
             return
         
-        # Убираем префикс: теперь бот реагирует на любое сообщение без префикса
         command = text.strip().lower()
         
-        # Проверяем команды
+        # Стикеры
         if command == "сама":
             await vk.messages_send(peer_id, sticker_id=STICKER_COMMANDS["сама"])
             return
@@ -403,7 +418,7 @@ async def process_message(message_data):
             await vk.messages_send(peer_id, sticker_id=STICKER_COMMANDS["бот"])
             return
         
-        # Проверяем RP команды (обнять, поцеловать и т.д.)
+        # RP команды
         if command in RP_ACTIONS:
             target_id = reply_user_id if reply_user_id else user_id
             user_name = await get_display_link(user_id)
@@ -412,14 +427,15 @@ async def process_message(message_data):
             
             result_text = f"{user_name} {action_desc} {target_name}!"
             
-            attachment = RP_IMAGES.get(command)
+            # Проверяем картинку в сохраненных данных
+            attachment = data.get("rp_images", {}).get(command)
             if attachment:
                 await vk.messages_send(peer_id, result_text, attachment=attachment)
             else:
                 await vk.messages_send(peer_id, result_text)
             return
         
-        # Команда для установки ника (доступна всем)
+        # Ник (для всех)
         if command.startswith("ник "):
             new_nick = command[4:].strip()
             if len(new_nick) > 30:
@@ -430,17 +446,16 @@ async def process_message(message_data):
                 return
             data["nicks"][str(user_id)] = new_nick
             save_data(data)
-            await vk.messages_send(peer_id, f"✅ Ваш ник установлен: {new_nick}")
+            await vk.messages_send(peer_id, f"✅ Ваш ник: {new_nick}")
             return
         
-        # Снять ник (доступно всем)
         if command == "снять ник":
             if str(user_id) in data.get("nicks", {}):
                 del data["nicks"][str(user_id)]
                 save_data(data)
-                await vk.messages_send(peer_id, "✅ Ваш ник снят")
+                await vk.messages_send(peer_id, "✅ Ник снят")
             else:
-                await vk.messages_send(peer_id, "❌ У вас нет ника")
+                await vk.messages_send(peer_id, "❌ Нет ника")
             return
         
         # Помощь
@@ -477,8 +492,8 @@ async def main():
     logger.info("🚀 RP BOT STARTED")
     logger.info(f"Group: {GROUP_ID}")
     
+    # Загружаем картинки из альбома
     await load_rp_images()
-    logger.info(f"Loaded {len(RP_IMAGES)} RP images")
     
     try:
         info = vk.groups_get_by_id()
