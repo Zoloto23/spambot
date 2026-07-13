@@ -1,62 +1,625 @@
+import asyncio
+import os
+import logging
+import json
+import time
+import random
+import requests
+import re
+from datetime import datetime, timedelta
+
+# Импортируем настройки из config.py
+try:
+    from config import CHMOK_IMAGES, RP_IMAGES_CONFIG, STICKER_IDS
+except ImportError:
+    CHMOK_IMAGES = []
+    RP_IMAGES_CONFIG = {}
+    STICKER_IDS = {"сама": 100, "бот": 101}
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
+
+TOKEN = os.environ.get("VK_GROUP_TOKEN")
+GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
+
+if not TOKEN:
+    logger.error("VK_GROUP_TOKEN not set")
+    raise RuntimeError("VK_GROUP_TOKEN not set")
+
+if not GROUP_ID:
+    logger.error("VK_GROUP_ID not set")
+    raise RuntimeError("VK_GROUP_ID not set")
+
+API_VERSION = "5.199"
+
+DATA_FILE = "rp_bot_data.json"
+
+def load_data():
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {
+            "owner": 1118563484,
+            "admins": {},
+            "mods": {},
+            "nicks": {},
+            "settings": {
+                "antispam": True,
+                "spam_limit": 3,
+                "spam_time": 5,
+                "antilink": True,
+                "whitelist": ["vk.com", "youtube.com", "t.me"]
+            },
+            "message_history": {},
+            "user_stats": {},
+            "rp_images": {},
+            "uploaded_attachments": {}  # Кэш загруженных картинок
+        }
+
+def save_data(data):
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logger.error(f"Save error: {e}")
+
+data = load_data()
+
+def user_link(user_id, name=None):
+    if name is None:
+        return f"[id{user_id}|Пользователь]"
+    return f"[id{user_id}|{name}]"
+
+def get_nick(user_id):
+    return data.get("nicks", {}).get(str(user_id), None)
+
+class VKAPI:
+    def __init__(self, token, group_id, version="5.199"):
+        self.token = token
+        self.group_id = group_id
+        self.version = version
+        self.base_url = "https://api.vk.com/method/"
+    
+    def _request(self, method, params=None):
+        if params is None:
+            params = {}
+        params["access_token"] = self.token
+        params["v"] = self.version
+        try:
+            response = requests.post(self.base_url + method, data=params, timeout=10)
+            response.raise_for_status()
+            result = response.json()
+            if "error" in result:
+                logger.error(f"VK API error: {result['error']['error_msg']}")
+                return {"error": result["error"]}
+            return result.get("response", {})
+        except Exception as e:
+            logger.error(f"Request error: {e}")
+            return {"error": {"error_msg": str(e)}}
+    
+    def messages_send(self, peer_id, message=None, attachment=None, sticker_id=None):
+        params = {
+            "peer_id": peer_id,
+            "random_id": int(time.time() * 1000) + random.randint(1, 99999),
+            "disable_mentions": 1
+        }
+        if message:
+            params["message"] = message
+        if attachment:
+            params["attachment"] = attachment
+        if sticker_id:
+            params["sticker_id"] = sticker_id
+        return self._request("messages.send", params)
+    
+    def users_get(self, user_ids):
+        return self._request("users.get", {"user_ids": user_ids})
+    
+    def groups_get_by_id(self):
+        return self._request("groups.getById", {"group_id": self.group_id})
+    
+    def get_long_poll_server(self):
+        return self._request("groups.getLongPollServer", {"group_id": self.group_id})
+    
+    def long_poll_request(self, server, key, ts, wait=25):
+        if not server.startswith(('http://', 'https://')):
+            server = 'https://' + server
+        url = f"{server}?act=a_check&key={key}&ts={ts}&wait={wait}&mode=2&version=2"
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Long Poll error: {e}")
+            return {"failed": 1}
+    
+    def photos_get_messages_upload_server(self):
+        return self._request("photos.getMessagesUploadServer")
+    
+    def photos_save_messages_photo(self, photo, server, hash):
+        return self._request("photos.saveMessagesPhoto", {
+            "photo": photo,
+            "server": server,
+            "hash": hash
+        })
+
+vk = VKAPI(TOKEN, GROUP_ID)
+
 # ============================================================
-# НАСТРОЙКИ КАРТИНОК ДЛЯ RP КОМАНД
+# 📤 ЗАГРУЗКА КАРТИНКИ НА СЕРВЕР VK
 # ============================================================
 
-# Ссылки на картинки для команды "чмок" (рандомный выбор)
-CHMOK_IMAGES = [
-    "https://sun9-39.userapi.com/s/v1/ig2/GMpxG4pGncekRmq2ro_6qvsUfYxyritx8tiDYxv6fUVLlBgKostVX8BXTD0W8VhwRuatlPsu8ZIxMrHLZrewMiEO.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x359,480x479,540x539,640x639,720x719,1080x1078&from=bu&cs=1080x0",
-    "https://sun9-82.userapi.com/s/v1/ig2/nhY9uva52zdHfH9W8uP5hbf9FevIzh79uC6o0xWOAoF_0IbTL81a3-pLn0vR_S6l-uSLbBAaC_WR5xNRlU-cMO0j.jpg?quality=95&as=32x39,48x59,72x88,108x132,160x195,240x293,360x440,480x586,540x659,611x746&from=bu&cs=611x0",
-    "https://sun9-35.userapi.com/s/v1/ig2/1cm1fEpIfPUEwg2YSXXIdH85LNj7cLEiyOrGHdi6FhGIdbKViQyYdFheux22PwCig1I63YhbL3L_VwNdBtIlfSyB.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,474x474&from=bu&cs=474x0"
-]
+async def upload_image_to_vk(image_url):
+    """Загружает картинку на сервер VK и возвращает attachment"""
+    try:
+        # Проверяем кэш
+        if image_url in data.get("uploaded_attachments", {}):
+            return data["uploaded_attachments"][image_url]
+        
+        # 1. Скачиваем картинку
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()
+        
+        # 2. Получаем сервер для загрузки
+        upload_server = vk.photos_get_messages_upload_server()
+        if "error" in upload_server:
+            logger.error(f"Upload server error: {upload_server['error']}")
+            return None
+        
+        upload_url = upload_server.get("upload_url")
+        if not upload_url:
+            return None
+        
+        # 3. Загружаем картинку
+        files = {'photo': ('image.jpg', response.content, 'image/jpeg')}
+        upload_response = requests.post(upload_url, files=files)
+        upload_data = upload_response.json()
+        
+        # 4. Сохраняем картинку
+        saved = vk.photos_save_messages_photo(
+            photo=upload_data.get("photo"),
+            server=upload_data.get("server"),
+            hash=upload_data.get("hash")
+        )
+        
+        if "error" in saved or not saved:
+            logger.error(f"Save photo error: {saved}")
+            return None
+        
+        # 5. Формируем attachment
+        photo = saved[0]
+        attachment = f"photo{photo['owner_id']}_{photo['id']}"
+        
+        # Сохраняем в кэш
+        if "uploaded_attachments" not in data:
+            data["uploaded_attachments"] = {}
+        data["uploaded_attachments"][image_url] = attachment
+        save_data(data)
+        
+        return attachment
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        return None
 
-# Другие команды с картинками
-RP_IMAGES_CONFIG = {
-    "обнять": [
-        "https://i.pinimg.com/736x/b7/34/b1/b734b111a8567a31fd181dd458c08414.jpg"
-    ],
-    "поцеловать": [
-        "https://i.pinimg.com/736x/2d/bf/18/2dbf18b3e07281b88d03a674f7c11cc5.jpg"
-    ],
-    "ударить": [
-        "https://i.pinimg.com/736x/5d/73/2f/5d732f6444c8f3c0fcaf16c507be4c26.jpg"
-    ],
-    "погладить": [
-        "https://i.pinimg.com/736x/6a/2d/8f/6a2d8f3d7c4e5f6g7h8i9j0k1l2m3n4o5.jpg"
-    ],
-    "укусить": [
-        "https://i.pinimg.com/736x/4f/3e/2d/4f3e2d1c2b3a4f5e6d7c8b9a0f1e2d3c.jpg"
-    ],
-    "толкнуть": [
-        "https://i.pinimg.com/736x/8a/7b/6c/8a7b6c5d4e3f2g1h2i3j4k5l6m7n8o9p.jpg"
-    ],
-    "поцеловать в губы": [
-        "https://i.pinimg.com/736x/2b/3c/4d/2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q.jpg"
-    ],
-    "поцеловать в щеку": [
-        "https://i.pinimg.com/736x/9v/0w/1x/9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j4k.jpg"
-    ],
-    "поцеловать в лоб": [
-        "https://i.pinimg.com/736x/8u/9v/0w/8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i3j.jpg"
-    ],
-    "взять за руку": [
-        "https://i.pinimg.com/736x/1x/2y/3z/1x2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m.jpg"
-    ],
-    "обнять за талию": [
-        "https://i.pinimg.com/736x/2y/3z/4a/2y3z4a5b6c7d8e9f0g1h2i3j4k5l6m7n.jpg"
-    ],
-    "прижать к себе": [
-        "https://i.pinimg.com/736x/4g/5h/6i/4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v.jpg"
-    ],
-    "погладить по голове": [
-        "https://i.pinimg.com/736x/4a/5b/6c/4a5b6c7d8e9f0g1h2i3j4k5l6m7n8o9p.jpg"
-    ],
-    "обнять за шею": [
-        "https://i.pinimg.com/736x/7t/8u/9v/7t8u9v0w1x2y3z4a5b6c7d8e9f0g1h2i.jpg"
-    ],
+# ============================================================
+# 🎯 ЗАГРУЗКА КАРТИНОК ИЗ CONFIG.PY
+# ============================================================
+
+def load_images_from_config():
+    """Загружает картинки из config.py"""
+    count = 0
+    
+    if CHMOK_IMAGES:
+        data["rp_images"]["чмок"] = CHMOK_IMAGES
+        count += 1
+        logger.info(f"Loaded {len(CHMOK_IMAGES)} images for 'чмок'")
+    
+    for command, images in RP_IMAGES_CONFIG.items():
+        if images:
+            data["rp_images"][command] = images
+            count += 1
+            logger.info(f"Loaded {len(images)} images for '{command}'")
+    
+    save_data(data)
+    logger.info(f"Loaded {count} RP commands from config")
+
+async def get_uploaded_image(command):
+    """Возвращает загруженный attachment для команды (с кэшированием)"""
+    images = data.get("rp_images", {}).get(command, [])
+    if not images:
+        return None
+    
+    if isinstance(images, list):
+        image_url = random.choice(images)
+    else:
+        image_url = images
+    
+    # Проверяем кэш загруженных картинок
+    if image_url in data.get("uploaded_attachments", {}):
+        return data["uploaded_attachments"][image_url]
+    
+    # Загружаем картинку
+    attachment = await upload_image_to_vk(image_url)
+    return attachment
+
+# ============================================================
+# 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
+# ============================================================
+
+RP_ACTIONS = {
+    "обнять": "обнял(а)",
+    "чмок": "чмокнул(а)",
+    "поцеловать": "поцеловал(а)",
+    "ударить": "ударил(а)",
+    "погладить": "погладил(а)",
+    "укусить": "укусил(а)",
+    "толкнуть": "толкнул(а)",
+    "обнять за шею": "обнял(а) за шею",
+    "поцеловать в губы": "поцеловал(а) в губы",
+    "поцеловать в щеку": "поцеловал(а) в щеку",
+    "поцеловать в лоб": "поцеловал(а) в лоб",
+    "взять за руку": "взял(а) за руку",
+    "обнять за талию": "обнял(а) за талию",
+    "прижать к себе": "прижал(а) к себе",
+    "погладить по голове": "погладил(а) по голове",
+    "задушить в объятиях": "задушил(а) в объятиях",
+    "потискать": "потискал(а)",
+    "облизать": "облизал(а)",
+    "пощечина": "дал(а) пощёчину",
+    "ущипнуть": "ущипнул(а)",
+    "кинуть камень": "кинул(а) камень в",
+    "полить водой": "полил(а) водой",
+    "кинуть торт": "кинул(а) торт в",
+    "облить соком": "облил(а) соком",
+    "забросать подушками": "забросал(а) подушками",
+    "дать пять": "дал(а) пять",
+    "кулак": "стукнул(а) кулаком",
+    "пожать руку": "пожал(а) руку",
+    "поклон": "поклонился(лась)",
+    "салют": "отдал(а) честь",
+    "обнять сзади": "обнял(а) сзади",
+    "поцеловать руку": "поцеловал(а) руку",
+    "шепнуть на ухо": "шепнул(а) на ухо",
+    "танцевать": "танцевал(а) с",
+    "петь": "пел(а) для",
+    "играть на гитаре": "играл(а) на гитаре для",
+    "рисовать": "нарисовал(а) портрет",
+    "читать стихи": "читал(а) стихи",
+    "пнуть": "пнул(а)",
+    "ударить головой": "ударил(а) головой",
+    "кинуть в стену": "кинул(а) в стену",
+    "схватить за горло": "схватил(а) за горло",
+    "дать подзатыльник": "дал(а) подзатыльник",
+    "накормить": "накормил(а)",
+    "напоить": "напоил(а)",
+    "угостить конфетой": "угостил(а) конфетой",
+    "приготовить завтрак": "приготовил(а) завтрак",
+    "бегать": "бегал(а) с",
+    "плавать": "плавал(а) с",
+    "играть в футбол": "играл(а) в футбол с",
+    "качаться": "качался(лась) с",
+    "гулять": "гулял(а) с",
+    "сидеть на траве": "сидел(а) на траве с",
+    "смотреть на звёзды": "смотрел(а) на звёзды с",
+    "купаться в реке": "купался(лась) в реке с",
+    "лететь": "летел(а) с",
+    "ехать на машине": "ехал(а) на машине с",
+    "плыть на корабле": "плыл(а) на корабле с",
+    "идти в горы": "шёл(ла) в горы с",
+    "раздеть": "раздел(а)",
+    "прикоснуться": "прикоснулся(лась)",
+    "снять футболку": "снял(а) футболку с",
+    "снять штаны": "снял(а) штаны с",
+    "поцеловать в шею": "поцеловал(а) в шею",
+    "обнять голым": "обнял(а) голым(ой)",
+    "лечь в кровать": "лёг(ла) в кровать с",
+    "пригласить в душ": "пригласил(а) в душ",
+    "массаж": "сделал(а) массаж",
+    "погладить по спине": "погладил(а) по спине",
+    "поцеловать в грудь": "поцеловал(а) в грудь",
+    "обнять в постели": "обнял(а) в постели",
+    "шептать нежности": "шептал(а) нежности",
+    "погладить по ноге": "погладил(а) по ноге",
+    "поцеловать в плечо": "поцеловал(а) в плечо",
+    "обнять за плечи": "обнял(а) за плечи",
+    "лечь рядом": "лёг(ла) рядом с",
+    "вдохнуть аромат": "вдохнул(а) аромат",
+    "погладить по груди": "погладил(а) по груди",
+    "шлёпнуть": "шлёпнул(а)",
+    "почесать": "почесал(а)",
+    "пощекотать": "пощекотал(а)",
+    "схватить": "схватил(а)",
+    "оттолкнуть": "оттолкнул(а)",
+    "прикусить": "прикусил(а)",
+    "лобзать": "лобзал(а)",
+    "целовать": "целовал(а)",
+    "обнимать": "обнимал(а)",
+    "ласкать": "ласкал(а)"
 }
 
-# Стикеры (замени ID на реальные)
-STICKER_IDS = {
-    "сама": 100,
-    "бот": 101,
-}
+async def get_user_name(user_id):
+    try:
+        result = vk.users_get(user_id)
+        if "error" not in result and result:
+            user = result[0]
+            return f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+        return f"ID {user_id}"
+    except:
+        return f"ID {user_id}"
+
+async def get_display_name(user_id):
+    nick = get_nick(user_id)
+    if nick:
+        return nick
+    return await get_user_name(user_id)
+
+async def get_display_link(user_id):
+    name = await get_display_name(user_id)
+    return user_link(user_id, name)
+
+def is_owner(user_id):
+    return user_id == data.get("owner", 1118563484)
+
+def is_admin(user_id):
+    if is_owner(user_id):
+        return True
+    return str(user_id) in data.get("admins", {})
+
+def is_mod(user_id):
+    if is_admin(user_id):
+        return True
+    return str(user_id) in data.get("mods", {})
+
+def is_banned(user_id, peer_id):
+    key = f"{peer_id}_{user_id}"
+    if key in data.get("banned", {}):
+        if data["banned"][key] > time.time():
+            return True
+        else:
+            del data["banned"][key]
+            save_data(data)
+    return False
+
+def is_muted(user_id, peer_id):
+    key = f"{peer_id}_{user_id}"
+    if key in data.get("muted", {}):
+        if data["muted"][key] > time.time():
+            return True
+        else:
+            del data["muted"][key]
+            save_data(data)
+    return False
+
+async def check_links(text):
+    if not data["settings"].get("antilink", True):
+        return False
+    whitelist = data["settings"].get("whitelist", ["vk.com", "youtube.com", "t.me"])
+    url_pattern = r'https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}'
+    links = re.findall(url_pattern, text)
+    for link in links:
+        if not any(w in link.lower() for w in whitelist):
+            return True
+    return False
+
+async def check_spam(user_id, peer_id):
+    if not data["settings"].get("antispam", True):
+        return False
+    key = f"{peer_id}_{user_id}"
+    now = time.time()
+    if key not in data["message_history"]:
+        data["message_history"][key] = []
+    spam_time = data["settings"].get("spam_time", 5)
+    data["message_history"][key] = [t for t in data["message_history"][key] if now - t < spam_time]
+    spam_limit = data["settings"].get("spam_limit", 3)
+    if len(data["message_history"][key]) >= spam_limit:
+        return True
+    data["message_history"][key].append(now)
+    save_data(data)
+    return False
+
+async def get_reply_user_id(message_data):
+    try:
+        if "object" in message_data and "message" in message_data["object"]:
+            msg = message_data["object"]["message"]
+            if "reply_message" in msg:
+                reply_msg = msg["reply_message"]
+                return reply_msg.get("from_id", 0)
+        return 0
+    except:
+        return 0
+
+async def process_message(message_data):
+    try:
+        if "object" in message_data and "message" in message_data["object"]:
+            msg = message_data["object"]["message"]
+            peer_id = msg.get("peer_id", 0)
+            user_id = msg.get("from_id", 0)
+            text = msg.get("text", "")
+            reply_user_id = await get_reply_user_id(message_data)
+        else:
+            peer_id = message_data.get("peer_id", 0)
+            user_id = message_data.get("from_id", 0)
+            text = message_data.get("text", "")
+            reply_user_id = 0
+        
+        if user_id < 0:
+            return
+        
+        if is_banned(user_id, peer_id):
+            return
+        
+        if is_muted(user_id, peer_id):
+            try:
+                await vk.messages_send(peer_id, "🔇 Вы заглушены!")
+            except:
+                pass
+            return
+        
+        if "user_stats" not in data:
+            data["user_stats"] = {}
+        data["user_stats"][str(user_id)] = data["user_stats"].get(str(user_id), 0) + 1
+        
+        if peer_id > 2000000000:
+            if await check_links(text) and not is_mod(user_id):
+                await vk.messages_send(peer_id, "🔗 Ссылки запрещены!")
+                return
+            
+            if await check_spam(user_id, peer_id) and not is_mod(user_id):
+                mute_time = 5
+                data["muted"][f"{peer_id}_{user_id}"] = time.time() + (mute_time * 60)
+                save_data(data)
+                await vk.messages_send(peer_id, f"🚫 Заглушен на {mute_time} минут за спам!")
+                return
+        
+        if not text:
+            return
+        
+        command = text.strip().lower()
+        
+        # 🎯 Стикеры
+        if command in STICKER_IDS:
+            await vk.messages_send(peer_id, sticker_id=STICKER_IDS[command])
+            return
+        
+        # 🎭 RP команды
+        if command in RP_ACTIONS:
+            target_id = reply_user_id if reply_user_id else user_id
+            user_name = await get_display_link(user_id)
+            target_name = await get_display_link(target_id)
+            action_desc = RP_ACTIONS[command]
+            
+            result_text = f"{user_name} {action_desc} {target_name}!"
+            
+            # Получаем ЗАГРУЖЕННУЮ картинку
+            attachment = await get_uploaded_image(command)
+            if attachment:
+                await vk.messages_send(peer_id, result_text, attachment=attachment)
+            else:
+                await vk.messages_send(peer_id, result_text)
+            return
+        
+        # 📛 Ник (для всех)
+        if command.startswith("ник "):
+            new_nick = command[4:].strip()
+            if len(new_nick) > 30:
+                await vk.messages_send(peer_id, "❌ Ник не более 30 символов!")
+                return
+            if len(new_nick) < 2:
+                await vk.messages_send(peer_id, "❌ Ник не менее 2 символов!")
+                return
+            data["nicks"][str(user_id)] = new_nick
+            save_data(data)
+            await vk.messages_send(peer_id, f"✅ Ваш ник: {new_nick}")
+            return
+        
+        if command == "снять ник":
+            if str(user_id) in data.get("nicks", {}):
+                del data["nicks"][str(user_id)]
+                save_data(data)
+                await vk.messages_send(peer_id, "✅ Ник снят")
+            else:
+                await vk.messages_send(peer_id, "❌ Нет ника")
+            return
+        
+        # 🆘 Помощь
+        if command == "помощь":
+            help_text = """
+🎭 RP БОТ
+
+Доступные команды:
+обнять, чмок, поцеловать, ударить, погладить, укусить
+толкнуть, обнять за шею, поцеловать в губы
+поцеловать в щеку, поцеловать в лоб, взять за руку
+обнять за талию, прижать к себе, погладить по голове
+и многие другие...
+
+📌 Чтобы применить к пользователю:
+Ответь на его сообщение и напиши команду
+
+🎯 Стикеры:
+сама, бот
+
+📛 Ник:
+ник [текст] — установить ник
+снять ник — снять ник
+"""
+            await vk.messages_send(peer_id, help_text)
+            return
+        
+    except Exception as e:
+        logger.error(f"Process error: {e}")
+
+async def main():
+    logger.info("🚀 RP BOT STARTED")
+    logger.info(f"Group: {GROUP_ID}")
+    
+    # Загружаем картинки из config.py
+    load_images_from_config()
+    
+    try:
+        info = vk.groups_get_by_id()
+        if "error" in info:
+            logger.error(f"Token error: {info['error']}")
+            return
+        logger.info("Token OK")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return
+    
+    lp_info = vk.get_long_poll_server()
+    if "error" in lp_info:
+        logger.error(f"Long Poll error: {lp_info['error']}")
+        return
+    
+    server = lp_info.get("server")
+    key = lp_info.get("key")
+    ts = lp_info.get("ts")
+    
+    if not server:
+        logger.error("No server")
+        return
+    
+    if not server.startswith(('http://', 'https://')):
+        server = 'https://' + server
+    
+    logger.info("BOT READY")
+    logger.info("Commands: обнять, чмок, ник, сама, бот, помощь")
+    
+    while True:
+        try:
+            response = vk.long_poll_request(server, key, ts)
+            
+            if "failed" in response:
+                if response["failed"] == 1:
+                    ts = response.get("ts", ts)
+                    continue
+                elif response["failed"] in [2, 3]:
+                    lp_info = vk.get_long_poll_server()
+                    if "error" not in lp_info:
+                        server = lp_info.get("server")
+                        key = lp_info.get("key")
+                        ts = lp_info.get("ts")
+                        if server and not server.startswith(('http://', 'https://')):
+                            server = 'https://' + server
+                    continue
+            
+            ts = response.get("ts", ts)
+            updates = response.get("updates", [])
+            
+            for update in updates:
+                try:
+                    if update.get("type") == "message_new":
+                        await process_message(update)
+                except Exception as e:
+                    logger.error(f"Update error: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Loop error: {e}")
+            await asyncio.sleep(5)
+
+if __name__ == "__main__":
+    asyncio.run(main())
