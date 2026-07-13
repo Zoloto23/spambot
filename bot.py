@@ -136,68 +136,77 @@ class VKAPI:
 
 vk = VKAPI(TOKEN, GROUP_ID)
 
-def upload_photo_to_vk(photo_url):
-    """Загружает фото на сервер VK (синхронно)"""
+# ============================================================
+# ПРОСТЫЕ ФУНКЦИИ БЕЗ АСИНХРОННОСТИ
+# ============================================================
+
+def upload_photo(photo_url):
+    """Загружает фото на сервер VK"""
     try:
-        response = requests.get(photo_url, timeout=10)
-        response.raise_for_status()
+        r = requests.get(photo_url, timeout=10)
+        r.raise_for_status()
         
-        upload_server = vk.photos_get_messages_upload_server()
-        if "error" in upload_server:
+        server = vk.photos_get_messages_upload_server()
+        if "error" in server:
             return None
         
-        upload_url = upload_server.get("upload_url")
-        if not upload_url:
+        url = server.get("upload_url")
+        if not url:
             return None
         
-        files = {'photo': ('image.jpg', response.content, 'image/jpeg')}
-        upload_response = requests.post(upload_url, files=files)
-        upload_data = upload_response.json()
+        files = {'photo': ('image.jpg', r.content, 'image/jpeg')}
+        resp = requests.post(url, files=files)
+        data = resp.json()
         
         saved = vk.photos_save_messages_photo(
-            photo=upload_data.get("photo"),
-            server=upload_data.get("server"),
-            hash=upload_data.get("hash")
+            photo=data.get("photo"),
+            server=data.get("server"),
+            hash=data.get("hash")
         )
         
         if "error" in saved or not saved:
             return None
         
-        photo = saved[0]
-        return f"photo{photo['owner_id']}_{photo['id']}"
+        p = saved[0]
+        return f"photo{p['owner_id']}_{p['id']}"
     except Exception as e:
         logger.error(f"Upload error: {e}")
         return None
 
 def get_photos_from_msg(msg):
-    """Извлекает все фото из сообщения"""
+    """Извлекает фото из сообщения"""
     photos = []
     if not msg:
         return photos
-    attachments = msg.get("attachments", [])
-    for att in attachments:
+    for att in msg.get("attachments", []):
         if att.get("type") == "photo":
-            photo = att.get("photo", {})
-            sizes = photo.get("sizes", [])
+            sizes = att.get("photo", {}).get("sizes", [])
             if sizes:
-                largest = max(sizes, key=lambda x: x.get("width", 0) * x.get("height", 0))
-                photo_url = largest.get("url")
-                if photo_url:
-                    photos.append(photo_url)
+                biggest = max(sizes, key=lambda x: x.get("width", 0) * x.get("height", 0))
+                url = biggest.get("url")
+                if url:
+                    photos.append(url)
     return photos
 
 def get_reply_info(msg):
-    """Получает информацию о ответе (синхронно)"""
+    """Получает информацию об ответе"""
     try:
-        reply_msg = msg.get("reply_message")
-        if isinstance(reply_msg, dict):
-            return reply_msg.get("from_id", 0), reply_msg
+        reply = msg.get("reply_message")
+        if isinstance(reply, dict):
+            return reply.get("from_id", 0), reply
         return 0, None
     except:
         return 0, None
 
+def send_message(peer_id, text, attachment=None):
+    """Отправка сообщения (синхронно)"""
+    try:
+        vk.messages_send(peer_id, message=text, attachment=attachment)
+    except Exception as e:
+        logger.error(f"Send error: {e}")
+
 # ============================================================
-# 🎭 ОСНОВНЫЕ ДЕЙСТВИЯ
+# RP ДЕЙСТВИЯ
 # ============================================================
 
 RP_ACTIONS = {
@@ -291,11 +300,6 @@ RP_ACTIONS = {
     "ласкать": "ласкал(а)"
 }
 
-STICKER_IDS = {
-    "сама": 100,
-    "бот": 101,
-}
-
 async def get_user_name(user_id):
     try:
         result = vk.users_get(user_id)
@@ -381,14 +385,24 @@ async def process_message(message_data):
         if not isinstance(message_data, dict):
             return
         
-        if "object" in message_data and "message" in message_data["object"]:
-            msg = message_data["object"]["message"]
-            peer_id = msg.get("peer_id", 0)
-            user_id = msg.get("from_id", 0)
-            text = msg.get("text", "")
-            reply_user_id, reply_msg = get_reply_info(msg)
-        else:
+        if "object" not in message_data or "message" not in message_data["object"]:
             return
+        
+        msg = message_data["object"]["message"]
+        peer_id = msg.get("peer_id", 0)
+        user_id = msg.get("from_id", 0)
+        text = msg.get("text", "")
+        
+        # Получаем информацию об ответе (синхронно)
+        reply_user_id = 0
+        reply_msg = None
+        try:
+            reply = msg.get("reply_message")
+            if isinstance(reply, dict):
+                reply_user_id = reply.get("from_id", 0)
+                reply_msg = reply
+        except:
+            pass
         
         if user_id < 0:
             return
@@ -398,7 +412,7 @@ async def process_message(message_data):
         
         if is_muted(user_id, peer_id):
             try:
-                await vk.messages_send(peer_id, "🔇 Вы заглушены!")
+                vk.messages_send(peer_id, "🔇 Вы заглушены!")
             except:
                 pass
             return
@@ -409,14 +423,14 @@ async def process_message(message_data):
         
         if peer_id > 2000000000:
             if await check_links(text) and not is_mod(user_id):
-                await vk.messages_send(peer_id, "🔗 Ссылки запрещены!")
+                vk.messages_send(peer_id, "🔗 Ссылки запрещены!")
                 return
             
             if await check_spam(user_id, peer_id) and not is_mod(user_id):
                 mute_time = 5
                 data["muted"][f"{peer_id}_{user_id}"] = time.time() + (mute_time * 60)
                 save_data(data)
-                await vk.messages_send(peer_id, f"🚫 Заглушен на {mute_time} минут за спам!")
+                vk.messages_send(peer_id, f"🚫 Заглушен на {mute_time} минут за спам!")
                 return
         
         if not text:
@@ -427,66 +441,57 @@ async def process_message(message_data):
         
         command = text[1:].strip().lower()
         
-        # ============================================================
-        # 📸 ЗАГРУЗКА ФОТО
-        # ============================================================
+        # ЗАГРУЗКА ФОТО
         if command.startswith("загрузить "):
             if not is_mod(user_id):
-                await vk.messages_send(peer_id, "❌ Нет прав для загрузки фото!")
+                vk.messages_send(peer_id, "❌ Нет прав!")
                 return
             
             parts = command.split()
             if len(parts) < 2:
-                await vk.messages_send(peer_id, "❌ Укажите команду: !загрузить обнять")
+                vk.messages_send(peer_id, "❌ !загрузить обнять")
                 return
             
-            is_bulk = False
-            if parts[1] == "все" and len(parts) > 2:
-                is_bulk = True
+            rp_cmd = parts[1]
+            if rp_cmd == "все":
+                if len(parts) < 3:
+                    vk.messages_send(peer_id, "❌ !загрузить все обнять")
+                    return
                 rp_cmd = parts[2]
-            else:
-                rp_cmd = parts[1]
             
             if rp_cmd not in RP_ACTIONS:
-                await vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена")
+                vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена")
                 return
             
-            photos_to_upload = []
-            
-            # 1. Фото из ответа
+            # Собираем фото
+            photos = []
             if reply_msg and isinstance(reply_msg, dict):
-                reply_photos = get_photos_from_msg(reply_msg)
-                if reply_photos:
-                    photos_to_upload.extend(reply_photos)
+                photos.extend(get_photos_from_msg(reply_msg))
+            photos.extend(get_photos_from_msg(msg))
             
-            # 2. Фото из текущего сообщения
-            current_photos = get_photos_from_msg(msg)
-            if current_photos:
-                photos_to_upload.extend(current_photos)
-            
-            if not photos_to_upload:
-                await vk.messages_send(peer_id, "❌ Нет фото! Прикрепите фото или ответьте на сообщение с фото.")
+            if not photos:
+                vk.messages_send(peer_id, "❌ Нет фото! Прикрепите фото или ответьте на сообщение с фото.")
                 return
             
-            if len(photos_to_upload) > 30:
-                photos_to_upload = photos_to_upload[:30]
+            if len(photos) > 30:
+                photos = photos[:30]
+                vk.messages_send(peer_id, f"⚠️ Загружаю только 30 фото")
             
-            await vk.messages_send(peer_id, f"⏳ Загрузка {len(photos_to_upload)} фото...")
+            vk.messages_send(peer_id, f"⏳ Загрузка {len(photos)} фото...")
             
             attachments = []
             failed = 0
-            for i, url in enumerate(photos_to_upload):
-                attachment = upload_photo_to_vk(url)
-                if attachment:
-                    attachments.append(attachment)
+            for i, url in enumerate(photos):
+                att = upload_photo(url)
+                if att:
+                    attachments.append(att)
                 else:
                     failed += 1
-                # Обновляем статус каждые 5 фото
-                if (i + 1) % 5 == 0 or (i + 1) == len(photos_to_upload):
-                    await vk.messages_send(peer_id, f"⏳ Загружено {len(attachments)}/{len(photos_to_upload)} фото...")
+                if (i + 1) % 5 == 0:
+                    vk.messages_send(peer_id, f"⏳ Загружено {len(attachments)}/{len(photos)} фото...")
             
             if not attachments:
-                await vk.messages_send(peer_id, f"❌ Не удалось загрузить ни одного фото! Ошибок: {failed}")
+                vk.messages_send(peer_id, f"❌ Не удалось загрузить ни одного фото! Ошибок: {failed}")
                 return
             
             if rp_cmd not in data["rp_images"]:
@@ -494,23 +499,19 @@ async def process_message(message_data):
             data["rp_images"][rp_cmd].extend(attachments)
             save_data(data)
             
-            status_msg = f"✅ Загружено {len(attachments)} фото для '{rp_cmd}'!"
-            if failed > 0:
-                status_msg += f"\n⚠️ {failed} фото не загрузились"
+            msg_text = f"✅ Загружено {len(attachments)} фото для '{rp_cmd}'!"
+            if failed:
+                msg_text += f"\n⚠️ {failed} фото не загрузились"
             
-            await vk.messages_send(peer_id, status_msg, attachment=attachments[0])
+            vk.messages_send(peer_id, msg_text, attachment=attachments[0])
             return
         
-        # ============================================================
-        # 🎯 СТИКЕРЫ
-        # ============================================================
-        if command in STICKER_IDS:
-            await vk.messages_send(peer_id, sticker_id=STICKER_IDS[command])
-            return
+        # СТИКЕРЫ (убрал, т.к. они не работают)
+        # if command in STICKER_IDS:
+        #     vk.messages_send(peer_id, sticker_id=STICKER_IDS[command])
+        #     return
         
-        # ============================================================
-        # 🎭 RP КОМАНДЫ
-        # ============================================================
+        # RP КОМАНДЫ
         if command in RP_ACTIONS:
             target_id = reply_user_id if reply_user_id else user_id
             user_name = await get_display_link(user_id)
@@ -522,63 +523,57 @@ async def process_message(message_data):
             images = data.get("rp_images", {}).get(command, [])
             if images:
                 attachment = random.choice(images)
-                await vk.messages_send(peer_id, result_text, attachment=attachment)
+                vk.messages_send(peer_id, result_text, attachment=attachment)
             else:
-                await vk.messages_send(peer_id, result_text)
+                vk.messages_send(peer_id, result_text)
             return
         
-        # ============================================================
-        # 📛 НИК
-        # ============================================================
+        # НИК
         if command.startswith("ник "):
             new_nick = command[4:].strip()
             if len(new_nick) > 30:
-                await vk.messages_send(peer_id, "❌ Ник не более 30 символов!")
+                vk.messages_send(peer_id, "❌ Ник не более 30 символов!")
                 return
             if len(new_nick) < 2:
-                await vk.messages_send(peer_id, "❌ Ник не менее 2 символов!")
+                vk.messages_send(peer_id, "❌ Ник не менее 2 символов!")
                 return
             data["nicks"][str(user_id)] = new_nick
             save_data(data)
-            await vk.messages_send(peer_id, f"✅ Ваш ник: {new_nick}")
+            vk.messages_send(peer_id, f"✅ Ваш ник: {new_nick}")
             return
         
         if command == "снять ник":
             if str(user_id) in data.get("nicks", {}):
                 del data["nicks"][str(user_id)]
                 save_data(data)
-                await vk.messages_send(peer_id, "✅ Ник снят")
+                vk.messages_send(peer_id, "✅ Ник снят")
             else:
-                await vk.messages_send(peer_id, "❌ Нет ника")
+                vk.messages_send(peer_id, "❌ Нет ника")
             return
         
-        # ============================================================
-        # 🆘 ПОМОЩЬ
-        # ============================================================
+        # ПОМОЩЬ
         if command == "помощь":
             help_text = """
-🎭 **RP БОТ**
+🎭 RP БОТ
 
-💬 Доступные команды:
+Команды:
 !обнять, !чмок, !поцеловать, !ударить, !погладить, !укусить
 и многие другие...
 
-📸 Загрузка фото:
+Загрузка фото:
 !загрузить [команда] — прикрепи фото
-!загрузить все [команда] — загрузить все фото
-(ответьте на сообщение с фото)
+!загрузить все [команда] — все фото
 
-🎯 Стикеры: !сама, !бот
-📛 Ник: !ник [текст], !снять ник
+Ник: !ник [текст], !снять ник
 """
-            await vk.messages_send(peer_id, help_text)
+            vk.messages_send(peer_id, help_text)
             return
         
     except Exception as e:
         logger.error(f"Process error: {e}")
 
 async def main():
-    logger.info("🚀 RP BOT STARTED")
+    logger.info("🚀 БОТ ЗАПУЩЕН")
     logger.info(f"Group: {GROUP_ID}")
     
     try:
@@ -607,9 +602,8 @@ async def main():
     if not server.startswith(('http://', 'https://')):
         server = 'https://' + server
     
-    logger.info("✅ BOT READY")
-    logger.info("💬 !обнять, !чмок, !ник, !сама, !бот, !помощь")
-    logger.info("📸 !загрузить [команда] — загрузить фото")
+    logger.info("✅ БОТ ГОТОВ")
+    logger.info("💬 !обнять, !чмок, !загрузить")
     
     while True:
         try:
