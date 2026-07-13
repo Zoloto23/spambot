@@ -130,83 +130,8 @@ class VKAPI:
         except Exception as e:
             logger.error(f"Long Poll error: {e}")
             return {"failed": 1}
-    
-    def photos_get_messages_upload_server(self):
-        return self._request("photos.getMessagesUploadServer", use_user_token=True)
-    
-    def photos_save_messages_photo(self, photo, server, hash):
-        return self._request("photos.saveMessagesPhoto", {
-            "photo": photo,
-            "server": server,
-            "hash": hash
-        }, use_user_token=True)
 
 vk = VKAPI(TOKEN, USER_TOKEN, GROUP_ID)
-
-# ============================================================
-# 📸 ЗАГРУЗКА ФОТО ИЗ data.json В VK
-# ============================================================
-
-def upload_photo_to_vk(image_url):
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        r = requests.get(image_url, timeout=10, headers=headers)
-        r.raise_for_status()
-        
-        server = vk.photos_get_messages_upload_server()
-        if "error" in server:
-            return None
-        
-        url = server.get("upload_url")
-        if not url:
-            return None
-        
-        files = {'photo': ('image.jpg', r.content, 'image/jpeg')}
-        resp = requests.post(url, files=files)
-        data = resp.json()
-        
-        saved = vk.photos_save_messages_photo(
-            photo=data.get("photo"),
-            server=data.get("server"),
-            hash=data.get("hash")
-        )
-        
-        if "error" in saved or not saved:
-            return None
-        
-        p = saved[0]
-        return f"photo{p['owner_id']}_{p['id']}"
-    except Exception as e:
-        logger.error(f"Upload error: {e}")
-        return None
-
-def preload_images_from_data():
-    """Загружает все картинки из data.json в VK"""
-    logger.info("📸 Загрузка картинок из data.json...")
-    
-    images_data = data.get("rp_images", {})
-    if not images_data:
-        logger.warning("⚠️ Нет картинок в data.json!")
-        return
-    
-    total = 0
-    for cmd, urls in images_data.items():
-        attachments = []
-        for url in urls:
-            att = upload_photo_to_vk(url)
-            if att:
-                attachments.append(att)
-                logger.info(f"✅ {cmd} → фото загружено")
-        if attachments:
-            data["rp_images"][cmd] = attachments
-            total += len(attachments)
-        else:
-            logger.warning(f"⚠️ {cmd} → не загрузилось")
-    
-    save_data(data)
-    logger.info(f"🎉 Загружено {total} картинок!")
 
 def get_reply_info(msg):
     try:
@@ -224,6 +149,7 @@ def get_reply_info(msg):
 RP_ACTIONS = {
     "обнять": "обнял(а)",
     "чмок": "чмокнул(а)",
+    "кусь": "куснул(а)",
     "поцеловать": "поцеловал(а)",
     "покусать": "покусал(а)",
     "ударить": "ударил(а)",
@@ -235,6 +161,7 @@ RP_ACTIONS = {
     "поцеловать в щеку": "поцеловал(а) в щеку",
     "поцеловать в лоб": "поцеловал(а) в лоб",
     "взять за руку": "взял(а) за руку",
+    "прижать": "прижал(а) к себе",
     "прижать к себе": "прижал(а) к себе",
     "погладить по голове": "погладил(а) по голове",
     "задушить в объятиях": "задушил(а) в объятиях",
@@ -450,9 +377,9 @@ async def process_message(message_data):
 🎭 **RP БОТ**
 
 💬 Команды:
-!обнять, !чмок, !поцеловать, !покусать, !ударить, !погладить, !укусить
+!обнять, !чмок, !кусь, !поцеловать, !покусать, !ударить, !погладить, !укусить
 !толкнуть, !обнять за шею, !поцеловать в губы, !поцеловать в щеку
-!поцеловать в лоб, !взять за руку, !прижать к себе, !погладить по голове
+!поцеловать в лоб, !взять за руку, !прижать, !прижать к себе, !погладить по голове
 !задушить в объятиях, !потискать, !облизать, !поцеловать руку
 !обнять сзади, !шепнуть на ухо, !раздеть, !массаж
 !поцеловать в шею, !лечь в кровать, !пригласить в душ
@@ -472,11 +399,6 @@ async def main():
     logger.info("🚀 АХУЕННЫЙ RP БОТ ЗАПУЩЕН")
     logger.info(f"Group: {GROUP_ID}")
     logger.info(f"User token: {'✅' if USER_TOKEN else '❌'}")
-    
-    if USER_TOKEN:
-        preload_images_from_data()
-    else:
-        logger.warning("⚠️ VK_TOKEN не добавлен! Картинки НЕ ЗАГРУЗЯТСЯ!")
     
     try:
         info = vk.groups_get_by_id()
@@ -505,7 +427,7 @@ async def main():
         server = 'https://' + server
     
     logger.info("✅ БОТ ГОТОВ")
-    logger.info("💬 !обнять, !чмок, !поцеловать и другие")
+    logger.info("💬 !обнять, !чмок, !кусь, !поцеловать и другие")
     logger.info("📌 Ответь на сообщение + команда = применится к тому, кому ответил")
     
     while True:
