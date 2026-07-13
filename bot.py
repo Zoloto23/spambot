@@ -47,7 +47,7 @@ def load_data():
             },
             "message_history": {},
             "user_stats": {},
-            "rp_images": {}  # команда: [список attachments]
+            "rp_images": {}
         }
 
 def save_data(data):
@@ -139,12 +139,7 @@ class VKAPI:
 
 vk = VKAPI(TOKEN, GROUP_ID)
 
-# ============================================================
-# 📤 ЗАГРУЗКА ФОТО НА СЕРВЕР VK
-# ============================================================
-
 async def download_and_upload_photo(photo_url):
-    """Скачивает фото по URL и загружает на сервер VK"""
     try:
         response = requests.get(photo_url, timeout=10)
         response.raise_for_status()
@@ -177,8 +172,8 @@ async def download_and_upload_photo(photo_url):
         logger.error(f"Upload error: {e}")
         return None
 
-async def get_photos_from_message(msg):
-    """Извлекает все фото из сообщения"""
+def get_photos_from_msg(msg):
+    """Извлекает все фото из сообщения (синхронно)"""
     photos = []
     attachments = msg.get("attachments", [])
     
@@ -194,13 +189,12 @@ async def get_photos_from_message(msg):
     return photos
 
 async def upload_multiple_photos(photo_urls):
-    """Загружает несколько фото и возвращает список attachments"""
     attachments = []
-    for url in photo_urls[:30]:  # максимум 30 фото
+    for url in photo_urls[:30]:
         attachment = await download_and_upload_photo(url)
         if attachment:
             attachments.append(attachment)
-        await asyncio.sleep(0.2)  # небольшая задержка чтобы не перегружать API
+        await asyncio.sleep(0.2)
     return attachments
 
 # ============================================================
@@ -387,12 +381,24 @@ async def get_reply_user_id(message_data):
     try:
         if "object" in message_data and "message" in message_data["object"]:
             msg = message_data["object"]["message"]
-            if "reply_message" in msg:
-                reply_msg = msg["reply_message"]
+            reply_msg = msg.get("reply_message")
+            if isinstance(reply_msg, dict):
                 return reply_msg.get("from_id", 0)
         return 0
     except:
         return 0
+
+async def get_reply_message(message_data):
+    """Получает сообщение, на которое был ответ"""
+    try:
+        if "object" in message_data and "message" in message_data["object"]:
+            msg = message_data["object"]["message"]
+            reply_msg = msg.get("reply_message")
+            if isinstance(reply_msg, dict):
+                return reply_msg
+        return None
+    except:
+        return None
 
 async def process_message(message_data):
     try:
@@ -405,6 +411,7 @@ async def process_message(message_data):
             user_id = msg.get("from_id", 0)
             text = msg.get("text", "")
             reply_user_id = await get_reply_user_id(message_data)
+            reply_msg = await get_reply_message(message_data)
         else:
             return
         
@@ -446,16 +453,13 @@ async def process_message(message_data):
         command = text[1:].strip().lower()
         
         # ============================================================
-        # 📸 ЗАГРУЗКА ФОТО: !загрузить [команда] (своё сообщение)
-        # 📸 ЗАГРУЗКА ФОТО ПО ОТВЕТУ: ответить на сообщение с фото !загрузить [команда]
-        # 📸 МАССОВАЯ ЗАГРУЗКА: !загрузить все [команда]
+        # 📸 ЗАГРУЗКА ФОТО
         # ============================================================
         if command.startswith("загрузить "):
             if not is_mod(user_id):
                 await vk.messages_send(peer_id, "❌ Нет прав для загрузки фото!")
                 return
             
-            # Парсим команду: !загрузить [все] [команда]
             parts = command.split()
             if len(parts) < 2:
                 await vk.messages_send(peer_id, "❌ Укажите команду: !загрузить обнять")
@@ -472,56 +476,44 @@ async def process_message(message_data):
                 await vk.messages_send(peer_id, f"❌ Команда '{rp_cmd}' не найдена")
                 return
             
-            # Проверяем, откуда брать фото
             photos_to_upload = []
             
-            # 1. Если есть ответ на сообщение — берём фото из него
-            if reply_user_id:
-                try:
-                    reply_msg = msg.get("reply_message", {})
-                    if reply_msg:
-                        reply_photos = await get_photos_from_message(reply_msg)
-                        if reply_photos:
-                            photos_to_upload.extend(reply_photos)
-                            await vk.messages_send(peer_id, f"📸 Найдено {len(reply_photos)} фото в сообщении, на которое вы ответили")
-                except Exception as e:
-                    logger.error(f"Reply photo error: {e}")
+            # 1. Фото из ответа
+            if reply_msg and isinstance(reply_msg, dict):
+                reply_photos = get_photos_from_msg(reply_msg)
+                if reply_photos:
+                    photos_to_upload.extend(reply_photos)
+                    await vk.messages_send(peer_id, f"📸 Найдено {len(reply_photos)} фото в ответе")
             
-            # 2. Если есть фото в текущем сообщении
-            current_photos = await get_photos_from_message(msg)
+            # 2. Фото из текущего сообщения
+            current_photos = get_photos_from_msg(msg)
             if current_photos:
                 photos_to_upload.extend(current_photos)
-                await vk.messages_send(peer_id, f"📸 Найдено {len(current_photos)} фото в вашем сообщении")
+                await vk.messages_send(peer_id, f"📸 Найдено {len(current_photos)} фото в сообщении")
             
-            # Если фото не найдены
             if not photos_to_upload:
-                await vk.messages_send(peer_id, "❌ Не найдено фото в сообщении или в ответе! Прикрепите фото или ответьте на сообщение с фото.")
+                await vk.messages_send(peer_id, "❌ Нет фото! Прикрепите фото или ответьте на сообщение с фото.")
                 return
             
-            # Ограничиваем количество фото
             if len(photos_to_upload) > 30:
                 photos_to_upload = photos_to_upload[:30]
-                await vk.messages_send(peer_id, f"⚠️ Загружаю только 30 фото из {len(photos_to_upload)}")
             
-            # Загружаем фото
-            await vk.messages_send(peer_id, f"⏳ Загрузка {len(photos_to_upload)} фото для команды '{rp_cmd}'...")
+            await vk.messages_send(peer_id, f"⏳ Загрузка {len(photos_to_upload)} фото...")
             
             attachments = await upload_multiple_photos(photos_to_upload)
             
             if not attachments:
-                await vk.messages_send(peer_id, "❌ Не удалось загрузить ни одного фото!")
+                await vk.messages_send(peer_id, "❌ Не удалось загрузить фото!")
                 return
             
-            # Сохраняем в базу
             if rp_cmd not in data["rp_images"]:
                 data["rp_images"][rp_cmd] = []
             data["rp_images"][rp_cmd].extend(attachments)
             save_data(data)
             
-            # Показываем первое загруженное фото как подтверждение
             await vk.messages_send(
                 peer_id, 
-                f"✅ Загружено {len(attachments)} фото для команды '{rp_cmd}'!", 
+                f"✅ Загружено {len(attachments)} фото для '{rp_cmd}'!", 
                 attachment=attachments[0]
             )
             return
@@ -546,7 +538,6 @@ async def process_message(message_data):
             
             images = data.get("rp_images", {}).get(command, [])
             if images:
-                # Выбираем случайное фото из загруженных
                 attachment = random.choice(images)
                 await vk.messages_send(peer_id, result_text, attachment=attachment)
             else:
@@ -554,7 +545,7 @@ async def process_message(message_data):
             return
         
         # ============================================================
-        # 📛 НИК (для всех)
+        # 📛 НИК
         # ============================================================
         if command.startswith("ник "):
             new_nick = command[4:].strip()
@@ -585,31 +576,17 @@ async def process_message(message_data):
             help_text = """
 🎭 **RP БОТ**
 
-💬 Доступные команды (с !):
+💬 Доступные команды:
 !обнять, !чмок, !поцеловать, !ударить, !погладить, !укусить
-!толкнуть, !обнять за шею, !поцеловать в губы
-!поцеловать в щеку, !поцеловать в лоб, !взять за руку
-!обнять за талию, !прижать к себе, !погладить по голове
 и многие другие...
 
 📸 Загрузка фото:
-!загрузить [команда] — прикрепи фото к сообщению
-!загрузить все [команда] — загрузить ВСЕ фото из сообщения
-(ответьте на сообщение с фото — бот возьмёт фото оттуда)
+!загрузить [команда] — прикрепи фото
+!загрузить все [команда] — загрузить все фото
+(ответьте на сообщение с фото)
 
-Примеры:
-!загрузить обнять (с фото в сообщении)
-!загрузить все чмок (загрузить все фото из сообщения)
-
-📌 Чтобы применить команду к пользователю:
-Ответь на его сообщение и напиши команду
-
-🎯 Стикеры:
-!сама, !бот
-
-📛 Ник:
-!ник [текст] — установить ник
-!снять ник — снять ник
+🎯 Стикеры: !сама, !бот
+📛 Ник: !ник [текст], !снять ник
 """
             await vk.messages_send(peer_id, help_text)
             return
@@ -648,10 +625,8 @@ async def main():
         server = 'https://' + server
     
     logger.info("✅ BOT READY")
-    logger.info("💬 Commands: !обнять, !чмок, !ник, !сама, !бот, !помощь")
+    logger.info("💬 !обнять, !чмок, !ник, !сама, !бот, !помощь")
     logger.info("📸 !загрузить [команда] — загрузить фото")
-    logger.info("📸 !загрузить все [команда] — загрузить все фото")
-    logger.info("📸 Ответьте на сообщение с фото + !загрузить [команда]")
     
     while True:
         try:
