@@ -494,7 +494,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- ОСНОВНОЙ ЗАПУСК ---
 
-async def main():
+def main():
+    """Запуск бота"""
+    # Создаем приложение
     app = Application.builder().token(TOKEN).build()
 
     # Команды для всех
@@ -530,7 +532,7 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("🚀 Бот запущен!")
-    await app.run_polling()
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
