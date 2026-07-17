@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flex VK Bot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #4a90d9, #357abd);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #4a90d9;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: #4a90d9;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #357abd;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+        .status.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .how-to {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .how-to h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .how-to ol {
+            margin-left: 20px;
+            color: #555;
+            line-height: 1.8;
+        }
+        .how-to a {
+            color: #4a90d9;
+            text-decoration: none;
+        }
+        .how-to a:hover {
+            text-decoration: underline;
+        }
+        .user-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f4fd;
+            border-radius: 10px;
+            display: none;
+        }
+        .user-info.visible {
+            display: block;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 0.8s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Flex VK Bot</h1>
+        <p class="subtitle">Подключи страничного бота к VK</p>
+
+        <div class="input-group">
+            <label for="tokenInput">Токен доступа</label>
+            <input type="text" id="tokenInput" placeholder="Вставь токен сюда">
+        </div>
+
+        <button class="btn" id="connectBtn" onclick="connectBot()">
+            🔌 Подключить бота
+        </button>
+
+        <div class="status" id="status"></div>
+        <div class="user-info" id="userInfo"></div>
+
+        <div class="how-to">
+            <h3>📖 Как получить токен:</h3>
+            <ol>
+                <li>Перейди по ссылке: <a href="https://vkhost.github.io/" target="_blank">vkhost.github.io</a></li>
+                <li>Выбери <strong>Kate Mobile</strong></li>
+                <li>Разреши доступ</li>
+                <li>Скопируй URL из адресной строки</li>
+                <li>Вставь его в поле выше</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function extractToken(url) {
+            const match = url.match(/access_token=([^&]+)/);
+            return match ? match[1] : null;
+        }
+
+        async function connectBot() {
+            const input = document.getElementById('tokenInput');
+            let token = input.value.trim();
+            const status = document.getElementById('status');
+            const userInfo = document.getElementById('userInfo');
+            const btn = document.getElementById('connectBtn');
+
+            // Если пользователь вставил URL, извлекаем токен
+            if (token.includes('access_token=')) {
+                token = extractToken(token);
+                if (token) {
+                    input.value = token;
+                }
+            }
+
+            if (!token) {
+                showStatus('❌ Введите токен или вставьте URL', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Подключение...';
+            status.className = 'status';
+            status.style.display = 'none';
+            userInfo.className = 'user-info';
+
+            try {
+                const response = await fetch('/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    showStatus('❌ ' + data.error, 'error');
+                } else {
+                    showStatus('✅ ' + data.message, 'success');
+                    if (data.user) {
+                        userInfo.innerHTML = `
+                            <strong>👤 Подключено:</strong><br>
+                            Имя: ${data.user.first_name} ${data.user.last_name}<br>
+                            ID: ${data.user.id}
+                        `;
+                        userInfo.className = 'user-info visible';
+                    }
+                }
+            } catch (error) {
+                showStatus('❌ Ошибка подключения: ' + error.message, 'error');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '🔌 Подключить бота';
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+
+        // Проверка статуса при загрузке
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                if (data.connected) {
+                    showStatus('✅ Бот уже подключен', 'success');
+                }
+            } catch {}
+        });
+
+        // Авто-извлечение токена из буфера обмена
+        document.addEventListener('paste', (e) => {
+            const text = e.clipboardData.getData('text');
+            if (text && text.includes('access_token=')) {
+                const token = extractToken(text);
+                if (token) {
+                    document.getElementById('tokenInput').value = token;
+                    document.getElementById('status').style.display = 'none';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
