@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import asyncio
 import os
 import logging
@@ -6,7 +9,7 @@ import time
 import random
 import requests
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ============================================================
 # НАСТРОЙКА ЛОГГИРОВАНИЯ
@@ -19,18 +22,41 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+# ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ (с понятным выводом)
 # ============================================================
 TOKEN = os.environ.get("VK_GROUP_TOKEN")
-GROUP_ID = int(os.environ.get("VK_GROUP_ID", 0))
+GROUP_ID = os.environ.get("VK_GROUP_ID")
+
+logger.info("=" * 60)
+logger.info("🤖 ЗАПУСК VK БОТА")
+logger.info("=" * 60)
 
 if not TOKEN:
-    logger.error("VK_GROUP_TOKEN не установлен!")
-    raise RuntimeError("VK_GROUP_TOKEN not set")
+    logger.error("❌ VK_GROUP_TOKEN не установлен!")
+    logger.info("📌 Установите переменную окружения VK_GROUP_TOKEN")
+    logger.info("📌 Пример: export VK_GROUP_TOKEN=ваш_токен")
+    logger.info("📌 Или добавьте в docker-compose.yml:")
+    logger.info("   environment:")
+    logger.info("     - VK_GROUP_TOKEN=ваш_токен")
+    logger.info("     - VK_GROUP_ID=ваш_id")
+    logger.info("=" * 60)
+    exit(1)
 
 if not GROUP_ID:
-    logger.error("VK_GROUP_ID не установлен!")
-    raise RuntimeError("VK_GROUP_ID not set")
+    logger.error("❌ VK_GROUP_ID не установлен!")
+    logger.info("📌 Установите переменную окружения VK_GROUP_ID")
+    logger.info("📌 Пример: export VK_GROUP_ID=123456789")
+    logger.info("=" * 60)
+    exit(1)
+
+try:
+    GROUP_ID = int(GROUP_ID)
+except ValueError:
+    logger.error(f"❌ VK_GROUP_ID должен быть числом, получено: {GROUP_ID}")
+    exit(1)
+
+logger.info(f"✅ Токен получен (длина: {len(TOKEN)} символов)")
+logger.info(f"✅ ID группы: {GROUP_ID}")
 
 API_VERSION = "5.199"
 DATA_FILE = "bot_data.json"
@@ -42,64 +68,68 @@ def load_data():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
-        return {
-            "owner": 1118563484,
-            "admins": {},
-            "mods": {},
-            "muted": {},
-            "banned": {},
-            "warns": {},
-            "money": {},
-            "exp": {},
-            "level": {},
-            "rep": {},
-            "marriage": {},
-            "work": {},
-            "inventory": {},
-            "daily_bonus": {},
-            "afk_users": {},
-            "reminders": {},
-            "polls": {},
-            "games": {},
-            "user_stats": {},
-            "message_history": {},
-            "group_chats": [],
-            "private_chats": [],
-            "nicks": {},
-            "user_roles": {},
-            "commands_usage": {},
-            "todos": {},
-            "rep_history": {},
-            "marriage_requests": {},
-            "settings": {
-                "welcome": "👋 Добро пожаловать в чат, {user}!",
-                "farewell": "👋 Пока, {user}!",
-                "rules": "1. Не материться\n2. Не спамить\n3. Уважать друг друга",
-                "antispam": True,
-                "spam_limit": 3,
-                "spam_time": 5,
-                "antilink": True,
-                "whitelist": ["vk.com", "youtube.com", "t.me"],
-                "slow_mode": False,
-                "slow_delay": 3,
-                "leveling": True,
-                "economy": True,
-                "daily_amount": 100,
-                "max_warns": 3,
-                "ban_duration": 7,
-                "mute_duration": 5
-            },
-            "shop": {
-                "items": [
-                    {"id": "vip", "name": "👑 VIP", "price": 100000, "desc": "VIP статус"},
-                    {"id": "premium", "name": "💎 Premium", "price": 50000, "desc": "Premium статус"},
-                    {"id": "red", "name": "🔴 Красный", "price": 5000, "desc": "Красный ник"},
-                    {"id": "blue", "name": "🔵 Синий", "price": 5000, "desc": "Синий ник"},
-                    {"id": "gold", "name": "🟡 Золотой", "price": 10000, "desc": "Золотой ник"}
-                ]
-            }
+    except FileNotFoundError:
+        logger.info("📁 Файл данных не найден, создаю новый...")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки данных: {e}")
+    
+    return {
+        "owner": 1118563484,
+        "admins": {},
+        "mods": {},
+        "muted": {},
+        "banned": {},
+        "warns": {},
+        "money": {},
+        "exp": {},
+        "level": {},
+        "rep": {},
+        "marriage": {},
+        "work": {},
+        "inventory": {},
+        "daily_bonus": {},
+        "afk_users": {},
+        "reminders": {},
+        "polls": {},
+        "games": {},
+        "user_stats": {},
+        "message_history": {},
+        "group_chats": [],
+        "private_chats": [],
+        "nicks": {},
+        "user_roles": {},
+        "commands_usage": {},
+        "todos": {},
+        "rep_history": {},
+        "marriage_requests": {},
+        "settings": {
+            "welcome": "👋 Добро пожаловать в чат, {user}!",
+            "farewell": "👋 Пока, {user}!",
+            "rules": "1. Не материться\n2. Не спамить\n3. Уважать друг друга",
+            "antispam": True,
+            "spam_limit": 3,
+            "spam_time": 5,
+            "antilink": True,
+            "whitelist": ["vk.com", "youtube.com", "t.me"],
+            "slow_mode": False,
+            "slow_delay": 3,
+            "leveling": True,
+            "economy": True,
+            "daily_amount": 100,
+            "max_warns": 3,
+            "ban_duration": 7,
+            "mute_duration": 5
+        },
+        "shop": {
+            "items": [
+                {"id": "vip", "name": "👑 VIP", "price": 100000, "desc": "VIP статус"},
+                {"id": "premium", "name": "💎 Premium", "price": 50000, "desc": "Premium статус"},
+                {"id": "red", "name": "🔴 Красный", "price": 5000, "desc": "Красный ник"},
+                {"id": "blue", "name": "🔵 Синий", "price": 5000, "desc": "Синий ник"},
+                {"id": "gold", "name": "🟡 Золотой", "price": 10000, "desc": "Золотой ник"}
+            ]
         }
+    }
 
 def save_data():
     try:
@@ -111,6 +141,7 @@ def save_data():
         return False
 
 data = load_data()
+logger.info(f"✅ Данные загружены: {len(data.get('user_stats', {}))} пользователей")
 
 # ============================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -244,6 +275,7 @@ class VKAPI:
         self.group_id = group_id
         self.base_url = "https://api.vk.com/method/"
         self.version = API_VERSION
+        self.session = requests.Session()
     
     def _request(self, method, params=None):
         if params is None:
@@ -251,25 +283,43 @@ class VKAPI:
         params["access_token"] = self.token
         params["v"] = self.version
         try:
-            response = requests.post(self.base_url + method, data=params, timeout=15)
+            response = self.session.post(self.base_url + method, data=params, timeout=15)
             response.raise_for_status()
             result = response.json()
             if "error" in result:
-                logger.error(f"VK API ошибка: {result['error']['error_msg']}")
-                return {"error": result["error"]}
+                error = result["error"]
+                error_msg = error.get("error_msg", "Unknown error")
+                error_code = error.get("error_code", 0)
+                
+                if error_code == 917:  # Flood control
+                    logger.warning("Флуд-контроль, пауза 1 секунда...")
+                    time.sleep(1)
+                    return self._request(method, params)
+                elif error_code == 6:  # Too many requests
+                    time.sleep(0.5)
+                    return self._request(method, params)
+                
+                logger.error(f"VK API ошибка {error_code}: {error_msg}")
+                return {"error": error}
             return result.get("response", {})
+        except requests.exceptions.Timeout:
+            logger.error(f"Таймаут запроса к {method}")
+            return {"error": {"error_msg": "Timeout"}}
+        except requests.exceptions.ConnectionError:
+            logger.error(f"Ошибка соединения при запросе к {method}")
+            return {"error": {"error_msg": "Connection error"}}
         except Exception as e:
-            logger.error(f"Ошибка запроса: {e}")
+            logger.error(f"Неизвестная ошибка в {method}: {e}")
             return {"error": {"error_msg": str(e)}}
     
     def messages_send(self, peer_id, message=None, attachment=None, sticker_id=None):
         params = {
             "peer_id": peer_id,
-            "random_id": int(time.time() * 1000) + random.randint(1, 99999),
+            "random_id": int(time.time() * 1000000) + random.randint(1, 999999),
             "disable_mentions": 0
         }
         if message:
-            params["message"] = message
+            params["message"] = message[:4096]  # Лимит ВК
         if attachment:
             params["attachment"] = attachment
         if sticker_id:
@@ -296,7 +346,7 @@ class VKAPI:
             server = 'https://' + server
         url = f"{server}?act=a_check&key={key}&ts={ts}&wait={wait}&mode=2&version=2"
         try:
-            response = requests.get(url, timeout=30)
+            response = self.session.get(url, timeout=wait + 10)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -319,8 +369,8 @@ async def check_reminders():
                 try:
                     name = await get_display_name(user_id)
                     vk.messages_send(peer_id, f"⏰ **Напоминание для {name}:**\n{text}")
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Ошибка отправки напоминания: {e}")
                 del data["reminders"][rid]
                 save_data()
     except Exception as e:
@@ -356,6 +406,7 @@ async def process_message(message_data):
         
         # Статистика
         data["user_stats"][str(user_id)] = data["user_stats"].get(str(user_id), 0) + 1
+        save_data()
         
         # Опыт
         if data["settings"].get("leveling", True):
@@ -393,7 +444,8 @@ async def process_message(message_data):
                     data["owner"] = new_owner
                     save_data()
                     vk.messages_send(peer_id, f"✅ Владелец изменен на {await get_display_link(new_owner)}")
-                except:
+                except Exception as e:
+                    logger.error(f"set_owner ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -406,7 +458,8 @@ async def process_message(message_data):
                     data["admins"][str(target_id)] = True
                     save_data()
                     vk.messages_send(peer_id, f"✅ {await get_display_link(target_id)} добавлен в админы")
-                except:
+                except Exception as e:
+                    logger.error(f"add_admin ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -422,7 +475,8 @@ async def process_message(message_data):
                         vk.messages_send(peer_id, f"✅ {await get_display_link(target_id)} удален из админов")
                     else:
                         vk.messages_send(peer_id, "❌ Не админ!")
-                except:
+                except Exception as e:
+                    logger.error(f"remove_admin ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -435,7 +489,8 @@ async def process_message(message_data):
                     data["mods"][str(target_id)] = True
                     save_data()
                     vk.messages_send(peer_id, f"✅ {await get_display_link(target_id)} добавлен в модераторы")
-                except:
+                except Exception as e:
+                    logger.error(f"add_mod ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -451,7 +506,8 @@ async def process_message(message_data):
                         vk.messages_send(peer_id, f"✅ {await get_display_link(target_id)} удален из модераторов")
                     else:
                         vk.messages_send(peer_id, "❌ Не модератор!")
-                except:
+                except Exception as e:
+                    logger.error(f"remove_mod ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -462,7 +518,7 @@ async def process_message(message_data):
                     vk.messages_send(peer_id, "❌ Ошибка сохранения!")
                 return
             
-            if command == "restart":
+            if command == "restart" or command == "reboot":
                 vk.messages_send(peer_id, "🔄 Перезагрузка...")
                 save_data()
                 os._exit(0)
@@ -482,7 +538,8 @@ async def process_message(message_data):
                     data["muted"][f"{peer_id}_{target_id}"] = time.time() + (minutes * 60)
                     save_data()
                     vk.messages_send(peer_id, f"🔇 {await get_display_link(target_id)} заглушен на {minutes} минут!")
-                except:
+                except Exception as e:
+                    logger.error(f"mute ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -499,7 +556,8 @@ async def process_message(message_data):
                         vk.messages_send(peer_id, f"✅ {await get_display_link(target_id)} размучен!")
                     else:
                         vk.messages_send(peer_id, "❌ Не заглушен!")
-                except:
+                except Exception as e:
+                    logger.error(f"unmute ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -515,7 +573,8 @@ async def process_message(message_data):
                         vk.messages_send(peer_id, f"👢 {await get_display_link(target_id)} кикнут!")
                     else:
                         vk.messages_send(peer_id, "❌ Ошибка!")
-                except:
+                except Exception as e:
+                    logger.error(f"kick ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -531,7 +590,8 @@ async def process_message(message_data):
                     vk.messages_send(peer_id, f"🚫 {await get_display_link(target_id)} забанен на {days} дней!")
                     chat_id = peer_id - 2000000000
                     vk.messages_remove_chat_user(chat_id, target_id)
-                except:
+                except Exception as e:
+                    logger.error(f"ban ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -548,7 +608,8 @@ async def process_message(message_data):
                         vk.messages_send(peer_id, f"✅ {await get_display_link(target_id)} разбанен!")
                     else:
                         vk.messages_send(peer_id, "❌ Не забанен!")
-                except:
+                except Exception as e:
+                    logger.error(f"unban ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
@@ -569,19 +630,24 @@ async def process_message(message_data):
                         vk.messages_send(peer_id, f"🚫 {await get_display_link(target_id)} забанен на {days} дней ({max_warns} предупреждений)!")
                     else:
                         vk.messages_send(peer_id, f"⚠️ {await get_display_link(target_id)} предупреждение {warns}/{max_warns}")
-                except:
+                except Exception as e:
+                    logger.error(f"warn ошибка: {e}")
                     vk.messages_send(peer_id, "❌ Ошибка!")
                 return
             
             if command == "set_rules" or command == "правила":
-                if not args:
-                    current = data["settings"].get("rules", "Правила не установлены")
-                    vk.messages_send(peer_id, f"📋 **Текущие правила:**\n{current}")
-                    return
-                rules = " ".join(args)
-                data["settings"]["rules"] = rules
-                save_data()
-                vk.messages_send(peer_id, "✅ Правила обновлены!")
+                try:
+                    if not args:
+                        current = data["settings"].get("rules", "Правила не установлены")
+                        vk.messages_send(peer_id, f"📋 **Текущие правила:**\n{current}")
+                        return
+                    rules = " ".join(args)
+                    data["settings"]["rules"] = rules
+                    save_data()
+                    vk.messages_send(peer_id, "✅ Правила обновлены!")
+                except Exception as e:
+                    logger.error(f"set_rules ошибка: {e}")
+                    vk.messages_send(peer_id, "❌ Ошибка!")
                 return
         
         # ============================================================
@@ -644,12 +710,13 @@ async def process_message(message_data):
 ⚠️ Предупреждений: {warns}
 📝 Сообщений: {stats}"""
                 vk.messages_send(peer_id, profile_text)
-            except:
+            except Exception as e:
+                logger.error(f"profile ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
         # money
-        if command == "money" or command == "баланс":
+        if command == "money" or command == "баланс" or command == "деньги":
             try:
                 target_id = user_id
                 if args:
@@ -660,7 +727,8 @@ async def process_message(message_data):
                 name = await get_display_name(target_id)
                 money = get_user_money(target_id)
                 vk.messages_send(peer_id, f"💰 Баланс {name}: {money} монет")
-            except:
+            except Exception as e:
+                logger.error(f"money ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -681,7 +749,8 @@ async def process_message(message_data):
                 data["daily_bonus"][key] = now
                 save_data()
                 vk.messages_send(peer_id, f"🎉 +{amount} монет!")
-            except:
+            except Exception as e:
+                logger.error(f"daily ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -696,7 +765,8 @@ async def process_message(message_data):
                 for item in items:
                     text += f"• {item['name']} — {item['price']} монет (ID: {item['id']})\n"
                 vk.messages_send(peer_id, text)
-            except:
+            except Exception as e:
+                logger.error(f"shop ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -723,7 +793,8 @@ async def process_message(message_data):
                     vk.messages_send(peer_id, f"✅ Куплено {item['name']} за {price} монет!")
                 else:
                     vk.messages_send(peer_id, f"❌ Недостаточно денег! Нужно: {price}")
-            except:
+            except Exception as e:
+                logger.error(f"buy ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -741,7 +812,8 @@ async def process_message(message_data):
                 exp = get_user_exp(target_id)
                 next_level_exp = get_required_exp(level)
                 vk.messages_send(peer_id, f"📊 Уровень {name}: {level}\n📈 Опыт: {exp}/{next_level_exp}")
-            except:
+            except Exception as e:
+                logger.error(f"level ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -762,23 +834,32 @@ async def process_message(message_data):
                 data["rep_history"][key] = time.time()
                 save_data()
                 vk.messages_send(peer_id, f"⭐ {await get_display_link(target_id)} получил репутацию!")
-            except:
+            except Exception as e:
+                logger.error(f"rep ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
         # rules
         if command == "rules" or command == "правила":
-            rules = data["settings"].get("rules", "Правила не установлены")
-            vk.messages_send(peer_id, f"📋 **Правила чата:**\n{rules}")
+            try:
+                rules = data["settings"].get("rules", "Правила не установлены")
+                vk.messages_send(peer_id, f"📋 **Правила чата:**\n{rules}")
+            except Exception as e:
+                logger.error(f"rules ошибка: {e}")
+                vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
         # info
         if command == "info" or command == "инфо":
-            info_text = f"""🤖 **Информация о боте**
+            try:
+                info_text = f"""🤖 **Информация о боте**
 👥 Пользователей: {len(data.get('user_stats', {}))}
 💬 Чатов: {len(data.get('group_chats', []))}
 ⚙️ API: {API_VERSION}"""
-            vk.messages_send(peer_id, info_text)
+                vk.messages_send(peer_id, info_text)
+            except Exception as e:
+                logger.error(f"info ошибка: {e}")
+                vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
         # roll
@@ -791,7 +872,8 @@ async def process_message(message_data):
                     max_num = 100
                 result = random.randint(1, max_num)
                 vk.messages_send(peer_id, f"🎲 {await get_display_link(user_id)} выбросил {result} из {max_num}")
-            except:
+            except Exception as e:
+                logger.error(f"roll ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -800,7 +882,8 @@ async def process_message(message_data):
             try:
                 result = "Орел" if random.random() < 0.5 else "Решка"
                 vk.messages_send(peer_id, f"🪙 {await get_display_link(user_id)}: {result}")
-            except:
+            except Exception as e:
+                logger.error(f"coin ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -814,7 +897,8 @@ async def process_message(message_data):
                           "Определенно да", "Определенно нет", "Может быть", "Неизвестно"]
                 answer = random.choice(answers)
                 vk.messages_send(peer_id, f"🔮 {answer}")
-            except:
+            except Exception as e:
+                logger.error(f"8ball ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -830,7 +914,8 @@ async def process_message(message_data):
                 level = get_user_level(user_id)
                 money = get_user_money(user_id)
                 vk.messages_send(peer_id, f"👤 Вы: {name}\n📊 Уровень: {level}\n💰 Денег: {money}")
-            except:
+            except Exception as e:
+                logger.error(f"whoami ошибка: {e}")
                 vk.messages_send(peer_id, "❌ Ошибка!")
             return
         
@@ -841,11 +926,30 @@ async def process_message(message_data):
 # ОСНОВНОЙ ЦИКЛ
 # ============================================================
 async def main():
+    logger.info("=" * 60)
     logger.info("🚀 Бот запускается...")
+    logger.info("=" * 60)
     
+    # Проверка подключения к VK
+    try:
+        logger.info("📡 Проверка подключения к VK API...")
+        group_info = vk.groups_get_by_id()
+        if "error" in group_info:
+            logger.error(f"❌ Ошибка подключения: {group_info['error']}")
+            logger.info("⚠️ Проверьте токен и ID группы!")
+            return
+        if group_info:
+            group = group_info[0] if isinstance(group_info, list) else group_info
+            logger.info(f"✅ Подключено к группе: {group.get('name', 'Неизвестно')}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки подключения: {e}")
+        return
+    
+    # Получение Long Poll сервера
+    logger.info("📡 Получение Long Poll сервера...")
     server_data = vk.get_long_poll_server()
     if "error" in server_data:
-        logger.error(f"Ошибка получения Long Poll: {server_data['error']}")
+        logger.error(f"❌ Ошибка получения Long Poll: {server_data['error']}")
         return
     
     server = server_data.get("server")
@@ -853,10 +957,13 @@ async def main():
     ts = server_data.get("ts")
     
     if not server or not key or not ts:
-        logger.error("Не удалось получить параметры Long Poll!")
+        logger.error("❌ Не удалось получить параметры Long Poll!")
         return
     
     logger.info(f"✅ Long Poll сервер получен")
+    logger.info("=" * 60)
+    logger.info("🤖 Бот готов к работе! Ожидание сообщений...")
+    logger.info("=" * 60)
     
     last_reminder_check = 0
     
@@ -870,7 +977,8 @@ async def main():
             
             if "failed" in response:
                 error_code = response.get("failed", 0)
-                if error_code == 1 or error_code == 2 or error_code == 3:
+                if error_code in [1, 2, 3]:
+                    logger.warning(f"Long Poll ошибка {error_code}, обновление...")
                     server_data = vk.get_long_poll_server()
                     if "error" not in server_data:
                         server = server_data.get("server", server)
@@ -901,7 +1009,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("🛑 Бот остановлен")
+        logger.info("🛑 Бот остановлен пользователем")
     except Exception as e:
-        logger.critical(f"Критическая ошибка: {e}")
+        logger.critical(f"💀 Критическая ошибка: {e}")
         raise
